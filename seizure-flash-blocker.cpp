@@ -1,0 +1,497 @@
+//Headers
+#include <Windows.h>
+#include <SDKDDKVer.h>
+#include <objidl.h>
+#include <gdiplus.h>
+#include <tlhelp32.h>
+#include <dwmapi.h>
+#include <string>
+#include <stdio.h>
+#include <vector>
+
+//Libraries
+using namespace Gdiplus;
+#pragma comment (lib,"Gdiplus.lib")
+#pragma comment (lib,"Dwmapi.lib")
+
+//Structs
+typedef struct {
+	bool bad;
+	int frames_last_set;            // How many frames ago this was set as bad
+	int total_change;      // aggregate color distance change for all pixels in region over last NUM_FRAMES frames
+	int* changes;          // circular buffer of aggregate color distance changes between each frame in the region. Length of NUM_FRAMES - 1
+} RegionStatus;
+
+//Precompiled constants
+#define NUM_FRAMES 6
+#define THRESHOLD 14400  // threshold for a single change in an individual pixel, which if repeated is problematic
+// Number of regions to divide the screen into
+#define MIN_HORIZ_REGIONS 20
+#define MIN_VERT_REGIONS 10
+#define FRAME_RATE 30
+
+//Class name for registering windows class. Name is arbitrary.
+std::wstring window_className = L"OverlayWindowClass";
+//Startup input for GDI+
+GdiplusStartupInput gdiplusStartupInput;
+//ID of Graphics Device Interface+
+ULONG_PTR           gdiplusToken;
+//Windows procedure
+LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+//Handle Device Context
+HDC hDC;
+//Handlw Window
+HWND hWnd;
+
+int ScreenX = 0;
+int ScreenY = 0;
+int windowOffsetX;
+int windowOffsetY;
+
+// Stores the last NUM_FRAMES screen captures
+// Each capture is a 1D array of length 4*ScreenX*ScreenY
+// The 4 is because there are 4 bytes per pixel, BGR and maybe A or something
+BYTE** screens = 0;
+int screens_start = 0;
+
+int HORIZ_REGIONS;     // integers calculated based on actual screen size
+int HORIZ_MULTIPLIER;
+int VERT_REGIONS;
+int VERT_MULTIPLIER;
+
+int TOTAL_REGION_THRESHOLD;    // threshold for aggregate change for an entire region over NUM_FRAMES frames
+
+RegionStatus** regions;
+int changes_start;         // start index of the changes circular buffer in RegionStatus
+
+
+// These are the lists of regions to cover or uncover in the WM_PAINT event
+std::vector<Point> to_cover;
+std::vector<Point> to_uncover;
+
+//Window variables
+HWND captureWindow;
+HWND foundWindow;
+HDC hScreen;
+HDC hdcScreen;
+HDC hdcBitmap;
+HBITMAP hBitmap;
+BITMAPINFOHEADER bmi = { 0 };
+
+//Important functions since c++ is a forward declaration language that reads from top to bottom
+void InitializeWindow(HINSTANCE hInstance);
+void RegisterWindowClass(HINSTANCE hInstance);
+void GDI_Init();
+int smallestFactorGreaterThan(int x, int y);
+//Cover the region with a color to prevent epliepsy
+void coverRegion(int horiz_coord, int vert_coord);
+//Uncover the region with a color when there is no rapid color change.
+void uncoverRegion(int horiz_coord, int vert_coord);
+//Get R/G/B colors in that pixel
+inline int PosB(int i, int x, int y);
+inline int PosG(int i, int x, int y);
+inline int PosR(int i, int x, int y);
+//Find window handle of chrome
+HWND findChrome();
+//Iterate through all processors ran on this computer.
+BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM fuckcpp);
+//Update a new frame
+void newFrame();
+int euclidean_modulus(int a, int b);
+
+void InitializeWindow(HINSTANCE hInstance) {
+
+	RegisterWindowClass(hInstance);
+
+
+	//The following gets the monitor width and height so that our app can cover the entire monitor.
+	HWND desktop_hwnd = GetDesktopWindow();
+	RECT desktop;
+	GetWindowRect(desktop_hwnd, &desktop);
+	LONG horizontal = desktop.right;
+	LONG vertical = desktop.bottom;
+
+	//Create a window top most to the top left and remove the window in the toolbar upon creation.
+	hWnd = ::CreateWindowExW(
+		WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TOOLWINDOW, //Keep window on top from all other windows and hide the windows from toolbar
+													//Our window should not have any borders at all
+		window_className.c_str(), //Class Name
+		L"", //Window name-  We don't care about this because we won't have a window border that displays the name or neither the 
+			//toolbar showing this app
+		WS_POPUP | WS_VISIBLE, //Visible pop up
+		CW_USEDEFAULT, CW_USEDEFAULT, //Default x and y position for creating windows 
+		horizontal, vertical, //Fully fill the entire monitor screne.
+		NULL, //There is no parent window 
+		NULL, //We are not gonna use a menu for this app
+		hInstance, //Handle instance (obtained from WinMain)
+		NULL); //This is used if we are using win32 api as a class. In this case this is useless for us;
+
+
+	// Make window semi-transparent, and mask out background color
+	::SetLayeredWindowAttributes(hWnd, RGB(0, 0, 0), 255, LWA_ALPHA | LWA_COLORKEY);
+	//Display the window but we will not have a border and transparent background.
+	::ShowWindow(hWnd, WS_VISIBLE);
+	//This will paint the window through WM_PAINT in windows procedure
+	::UpdateWindow(hWnd);
+
+	//This code will disable user input (mouse clicking and keyboard) and allow user activity to work below this application.
+	//These graphics will render last meaning that all windows will render first and then this window to ensure
+	//the drawn graphics appears on the top.
+	LONG cur_style = GetWindowLong(hWnd, GWL_EXSTYLE);
+	SetWindowLong(hWnd, GWL_EXSTYLE, cur_style | WS_EX_TRANSPARENT | WS_EX_LAYERED);
+
+	//(Not related to the objective but) Set the Timer every 50ms to perform invalidations to paintinng through WM_PAINT.
+	//Code handling occurs in DRAW_TIMER at the WM_TIMER at windows procedure.
+	//SetTimer(hWnd, DRAW_TIMER, 500, (TIMERPROC)NULL);
+
+}
+void GDI_Init() {
+	// Initialize GDI+. This allows us to draw alpha pixels
+
+	GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
+}
+void RegisterWindowClass(HINSTANCE hInstance) {
+	window_className = L"Class1";
+	// Register window class
+	WNDCLASSEXW wcex = { 0 };
+	wcex.cbSize = sizeof(wcex);
+	wcex.style = CS_HREDRAW | CS_VREDRAW;
+	wcex.lpfnWndProc = WndProc;
+	wcex.hInstance = hInstance;
+	wcex.hCursor = ::LoadCursorW(NULL, (LPCWSTR)IDC_ARROW);
+	wcex.hbrBackground = (HBRUSH)::GetStockObject(BLACK_BRUSH);
+	wcex.lpszClassName = window_className.c_str();
+	::RegisterClassExW(&wcex);
+}
+
+// finds the smallest factor of x greater than y
+int smallestFactorGreaterThan(int x, int y) {
+	int factor = y;
+	while (x % factor != 0) {     // sorry I dont know number theory
+		factor++;
+	}
+	return factor;
+}
+
+BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM fuckcpp) {
+	if (!IsWindowVisible(hwnd))
+		return TRUE;
+	DWORD processID;
+	//This function gets the processID that belongs to the windows handle.
+	GetWindowThreadProcessId(hwnd, &processID);
+
+	PROCESSENTRY32 peInfo;
+	//Get a list of processes
+	HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, processID);
+	if (hSnapshot)
+	{
+		peInfo.dwSize = sizeof(peInfo);
+		BOOL nextProcess = Process32First(hSnapshot, &peInfo);
+		while (nextProcess)
+		{
+			//Check if the process is chrome.exe and has the right processID
+			if (peInfo.th32ProcessID == processID && strcmp(peInfo.szExeFile, "chrome.exe") == 0)
+			{
+				//We got it. By returning false we stop iterating through our list of processes
+				CloseHandle(hSnapshot);
+				foundWindow = hwnd;
+				return FALSE;
+			}
+			//Cycle through each processes from chrome.exe
+			nextProcess = Process32Next(hSnapshot, &peInfo);
+		}
+		CloseHandle(hSnapshot);
+	}
+	//Search for more other processes for other checks
+	return TRUE;
+
+}
+HWND findChrome() {
+	EnumWindows((WNDENUMPROC)&EnumWindowsProc, NULL);
+	return foundWindow;
+}
+void initialize() {
+	//Get the window position and size of a Chrome Window
+	//Some of the chrome processors may be service or even nonsense. We will take the process ID
+	//and window handle that contains the visible window of Chrome
+	captureWindow = findChrome();
+	hScreen = GetWindowDC(captureWindow);
+	RECT windowRect;
+	DwmGetWindowAttribute(captureWindow, DWMWA_EXTENDED_FRAME_BOUNDS, &windowRect, sizeof(windowRect));
+	ScreenX = windowRect.right - windowRect.left;
+	ScreenY = windowRect.bottom - windowRect.top;
+	windowOffsetX = windowRect.left;
+	windowOffsetY = windowRect.top;
+
+	//Split the window into regions
+	HORIZ_REGIONS = smallestFactorGreaterThan(ScreenX, MIN_HORIZ_REGIONS);
+	VERT_REGIONS = smallestFactorGreaterThan(ScreenY, MIN_VERT_REGIONS);
+
+	HORIZ_MULTIPLIER = ScreenX / HORIZ_REGIONS;
+	VERT_MULTIPLIER = ScreenY / VERT_REGIONS;
+
+	TOTAL_REGION_THRESHOLD = THRESHOLD * (ScreenX / HORIZ_REGIONS) * (ScreenY / VERT_REGIONS) * NUM_FRAMES;
+
+	hdcScreen = CreateCompatibleDC(hScreen);
+	hdcBitmap = CreateCompatibleDC(hScreen);
+	hBitmap = CreateCompatibleBitmap(hScreen, ScreenX, ScreenY);
+	SelectObject(hdcBitmap, hBitmap);
+
+	// allocate memory for screens and regions
+	screens = new BYTE*[NUM_FRAMES];
+	for (int i = 0; i < NUM_FRAMES; i++) {
+		screens[i] = new BYTE[4 * ScreenX*ScreenY];
+	}
+
+	regions = new RegionStatus*[HORIZ_REGIONS];
+	for (int i = 0; i < HORIZ_REGIONS; i++) {
+		regions[i] = new RegionStatus[VERT_REGIONS];
+		for (int j = 0; j < VERT_REGIONS; j++) {
+			regions[i][j].changes = new int[NUM_FRAMES - 1];
+		}
+	}
+
+	//Do a worst case allocation by preparing a premade size of a vector
+	to_cover.reserve(HORIZ_REGIONS*VERT_REGIONS);
+	to_uncover.reserve(HORIZ_REGIONS*VERT_REGIONS);
+
+	//bitmap to be copied to the screen
+	bmi.biSize = sizeof(BITMAPINFOHEADER);
+	bmi.biPlanes = 1;
+	bmi.biBitCount = 32;
+	bmi.biWidth = ScreenX;
+	bmi.biHeight = -ScreenY;
+	bmi.biCompression = BI_RGB;
+	bmi.biSizeImage = 0;
+
+}
+void cleanup() {
+	//Delete anything pointers or resource that we use
+	if (screens) {
+		for (int i = 0; i < NUM_FRAMES; i++) {
+			delete screens[i];
+		}
+		delete screens;
+	}
+	if (regions) {
+		for (int i = 0; i < HORIZ_REGIONS; i++) {
+			for (int j = 0; j < VERT_REGIONS; j++) {
+				delete regions[i][j].changes;
+			}
+			delete regions[i];
+		}
+		delete regions;
+	}
+
+	ReleaseDC(GetDesktopWindow(), hScreen);
+	DeleteDC(hdcScreen);
+	DeleteDC(hdcBitmap);
+	DeleteObject(hBitmap);
+
+
+	GdiplusShutdown(gdiplusToken);
+}
+
+// https://stackoverflow.com/questions/16112482/c-getting-rgb-from-hbitmap
+void ScreenCap(unsigned int i) {
+	if (i >= NUM_FRAMES)     // ensure never out of bounds
+		return;
+
+	BitBlt(hdcBitmap, 0, 0, ScreenX, ScreenY, hScreen, 0, 0, SRCCOPY);
+	GetDIBits(hdcScreen, hBitmap, 0, ScreenY, screens[i], (BITMAPINFO*)&bmi, DIB_RGB_COLORS);
+}
+
+inline int PosB(int i, int x, int y)
+{
+	return screens[i][4 * ((y*ScreenX) + x)];
+}
+
+inline int PosG(int i, int x, int y)
+{
+	return screens[i][4 * ((y*ScreenX) + x) + 1];
+}
+
+inline int PosR(int i, int x, int y)
+{
+	return screens[i][4 * ((y*ScreenX) + x) + 2];
+}
+
+int euclidean_modulus(int a, int b) {
+	int m = a % b;
+	if (m < 0)
+		m = m + b;
+	return m;
+}
+
+void coverRegion(int horiz_coord, int vert_coord) {
+	RECT rect;
+	rect.top = vert_coord * VERT_MULTIPLIER + windowOffsetY;
+	rect.left = horiz_coord * HORIZ_MULTIPLIER + windowOffsetX;
+	rect.bottom = (vert_coord + 1) * VERT_MULTIPLIER + windowOffsetY;
+	rect.right = (horiz_coord + 1) * HORIZ_MULTIPLIER + windowOffsetX;
+
+	InvalidateRect(hWnd, &rect, 0);
+	to_cover.push_back(Point(horiz_coord, vert_coord));
+}
+void uncoverRegion(int horiz_coord, int vert_coord) {
+	RECT rect;
+	rect.top = vert_coord * VERT_MULTIPLIER + windowOffsetY;
+	rect.left = horiz_coord * HORIZ_MULTIPLIER + windowOffsetX;
+	rect.bottom = (vert_coord + 1) * VERT_MULTIPLIER + windowOffsetY;
+	rect.right = (horiz_coord + 1) * HORIZ_MULTIPLIER + windowOffsetX;
+
+	InvalidateRect(hWnd, &rect, 0);
+	to_uncover.push_back(Point(horiz_coord, vert_coord));
+}
+
+
+//BYTE screens[NUM_FRAMES][4 * ScreenX*ScreenY];
+//unsigned int screens_start = 0;
+// https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nc-winuser-timerproc
+// https://stackoverflow.com/questions/15685095/how-to-use-settimer-api
+void newFrame() {
+	int new_frame_i = screens_start;
+
+	//We have a (NUM_FRAMES) frames used for a circular buffer.
+	//If there are free space in a buffer, we are able to allocate the frame for the buffer
+	//Otherwise if the buffer is full, the oldest buffer will get replace with the new one.
+	ScreenCap(screens_start);
+	screens_start++;
+	if (screens_start >= NUM_FRAMES) {
+		screens_start = 0;
+	}
+
+	int prev_frame_i = new_frame_i - 1;
+	if (prev_frame_i < 0)
+		prev_frame_i += NUM_FRAMES;
+
+	//The following finds the aggregate distance of all region.
+	for (int horiz_r = 0; horiz_r < HORIZ_REGIONS; horiz_r++) {
+		for (int vert_r = 0; vert_r < VERT_REGIONS; vert_r++) {
+			//In this region, whenever we add a new frame and remove a oldest frame
+			RegionStatus* region = &regions[horiz_r][vert_r];
+			//We subtract the oldest aggregate change from the oldest frame
+			region->total_change -= region->changes[changes_start];
+			unsigned int new_change = 0;
+			//This will compute the aggregate change of the vectors of each pixel RGB within the frame
+			for (int x_i = 0; x_i < HORIZ_MULTIPLIER; x_i++) {
+				int x = horiz_r * HORIZ_MULTIPLIER + x_i;
+				for (int y_i = 0; y_i < VERT_MULTIPLIER; y_i++) {
+					int y = vert_r * VERT_MULTIPLIER + y_i;
+
+					int deltaB = PosB(new_frame_i, x, y) - PosB(prev_frame_i, x, y);
+					int deltaG = PosG(new_frame_i, x, y) - PosG(prev_frame_i, x, y);
+					int deltaR = PosR(new_frame_i, x, y) - PosR(prev_frame_i, x, y);
+
+					new_change += deltaB * deltaB;
+					new_change += deltaG * deltaG;
+					new_change += deltaR * deltaR;
+				}
+			}
+
+			region->changes[changes_start] = new_change;
+			//We then add the newest frame. By doing this, instead of adding all the NUM_FRAMES frames which costs
+			//NUM_FRAMES operations we only use 2 operations regardless of NUM_FRAMES frames we have
+			region->total_change += new_change;
+
+			// check if the changes is extreme. The aggregate change is very high
+			if (region->total_change > TOTAL_REGION_THRESHOLD) {
+				region->frames_last_set = 0;
+				if (!region->bad) {
+					//If so than this may/may not be a epilepsy and will cover it with a red color.
+					region->bad = true;
+					coverRegion(horiz_r, vert_r);
+				}
+			}
+			else {
+				// If not remove the cover and consider the region safe
+				region->frames_last_set++;
+				if (region->bad && region->frames_last_set >= NUM_FRAMES) {
+					region->bad = false;
+					uncoverRegion(horiz_r, vert_r);
+				}
+			}
+		}
+	}
+
+}
+
+//Every X seconds, we will call a new frame which depends on the FPS we have set.
+void timerCallback(HWND hwnd, UINT uMsg, UINT timerId, DWORD dwTime) {
+	newFrame();
+}
+
+//Window procedure
+LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	switch (message)
+	{
+		//This case is responsible for drawing colors and other stuff on our window.
+	case WM_PAINT:
+	{
+		if (to_cover.size() == 0 && to_uncover.size() == 0)
+			return ::DefWindowProc(hWnd, message, wParam, lParam);  // Don't waste resources setting up painting
+
+		PAINTSTRUCT ps = { 0 };
+		//Begin Paint
+		hDC = ::BeginPaint(hWnd, &ps);
+
+		int region_x, region_y;
+		Graphics graphics(hDC);
+		SolidBrush uncover_pen(Color(255, 0, 0, 0));
+		SolidBrush cover_pen(Color(255, 255, 1, 1));
+		for (int i = 0; i < to_cover.size(); i++) {
+			region_x = to_cover[i].X;
+			region_y = to_cover[i].Y;
+			graphics.FillRectangle(&cover_pen, region_x*HORIZ_MULTIPLIER + windowOffsetX, region_y*VERT_MULTIPLIER + windowOffsetY, HORIZ_MULTIPLIER, VERT_MULTIPLIER);
+		}
+		for (int i = 0; i < to_uncover.size(); i++) {
+			region_x = to_uncover[i].X;
+			region_y = to_uncover[i].Y;
+			graphics.FillRectangle(&uncover_pen, region_x*HORIZ_MULTIPLIER + windowOffsetX, region_y*VERT_MULTIPLIER + windowOffsetY, HORIZ_MULTIPLIER, VERT_MULTIPLIER);
+		}
+		to_uncover.clear();
+		to_cover.clear();
+
+		//End paint.
+		::EndPaint(hWnd, &ps);
+		return 0;
+	}
+
+	case WM_DESTROY:
+		//Destroy the window and output a 0 to end the application
+		::PostQuitMessage(0);
+		return 0;
+	default:
+		//Windows message that we don't care and let the operating system do it.
+		break;
+	}
+	return ::DefWindowProc(hWnd, message, wParam, lParam);
+}
+
+
+
+int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE prevInstance, LPSTR str, int nCmdShow) {
+
+	MSG msg = { 0 };
+	BOOL bRet;
+	//Perform init things
+	initialize();
+	GDI_Init();
+	InitializeWindow(hInstance);
+
+	// capture the screen at 10 fps
+	SetTimer(hWnd, NULL, (int)(1.0f / FRAME_RATE * 1000), (TIMERPROC)&timerCallback);
+
+
+	//Main Message loop that will iterate over and over until it receives a destroy message
+	//in that case it is a ID of -1 and will close the app
+	while (::GetMessageW(&msg, NULL, 0, 0) > 0)
+	{
+		::TranslateMessage(&msg);
+		::DispatchMessageW(&msg);
+	}
+	//clean up the stuff
+	cleanup();
+	return (int)msg.wParam;
+}
