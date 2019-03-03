@@ -2,6 +2,8 @@
 
 # NOTE: This is currently an experimental prototype intended as a proof of concept. It should not be relied on by people with epilepsy.
 
+## Notes on running the software
+It is not guarranteed to work on Windows 10
 
 ## Why we made it
 Some videos on Youtube with flashing lights in them have [SEIZURE-WARNING] or something similar in the title or description. Most don't, and it's baffling how easy it would be for someone with photosensitive epilepsy to stumble on one of these videos with no warning at all. Modern operating systems have various accessibility features, but nothing to protect people with this condition. Protection from flashing images on the screen ought to be built in and battle tested, so our hope was to build a proof of concept prototype that will make developers aware of the concept, so they can make more advanced and comprehensive versions.
