@@ -217,7 +217,7 @@ void initialize() {
 	captureWindow = findChrome();
 	hScreen = GetWindowDC(captureWindow);
 	RECT windowRect;
-	DwmGetWindowAttribute(captureWindow, DWMWA_EXTENDED_FRAME_BOUNDS, &windowRect, sizeof(windowRect));
+	GetWindowRect(captureWindow, &windowRect);
 	ScreenX = windowRect.right - windowRect.left;
 	ScreenY = windowRect.bottom - windowRect.top;
 	windowOffsetX = windowRect.left;
