@@ -46,10 +46,13 @@ int ScreenY = 0;
 int windowOffsetX;
 int windowOffsetY;
 
-// Stores the last NUM_FRAMES screen captures
-// Each capture is a 1D array of length 4*ScreenX*ScreenY
+// Stores the last NUM_FRAMES screen captures as a circular buffer
+// Screens_start stores the index of the start of this circular buffer (the index of the oldest capture)
+// Each capture is of length FRAME_SIZE (4*ScreenX*ScreenY)
 // The 4 is because there are 4 bytes per pixel, BGR and maybe A or something
-BYTE** screens = 0;
+// screens itself is a 1D array acting as a 2D array, due to C limitations.
+BYTE* screens;
+int FRAME_SIZE;
 int screens_start = 0;
 
 int HORIZ_REGIONS;     // integers calculated based on actual screen size
@@ -218,6 +221,9 @@ void initialize() {
 	GetWindowRect(captureWindow, &windowRect);
 	ScreenX = windowRect.right - windowRect.left;
 	ScreenY = windowRect.bottom - windowRect.top;
+
+	FRAME_SIZE = 4*ScreenX*ScreenY;
+
 	windowOffsetX = windowRect.left;
 	windowOffsetY = windowRect.top;
 
@@ -236,10 +242,7 @@ void initialize() {
 	SelectObject(hdcBitmap, hBitmap);
 
 	// allocate memory for screens and regions
-	screens = new BYTE*[NUM_FRAMES];
-	for (int i = 0; i < NUM_FRAMES; i++) {
-		screens[i] = new BYTE[4 * ScreenX*ScreenY];
-	}
+	screens = new BYTE[NUM_FRAMES*FRAME_SIZE];
 
 	regions = new RegionStatus*[HORIZ_REGIONS];
 	for (int i = 0; i < HORIZ_REGIONS; i++) {
@@ -266,9 +269,6 @@ void initialize() {
 void cleanup() {
 	//Delete anything pointers or resource that we use
 	if (screens) {
-		for (int i = 0; i < NUM_FRAMES; i++) {
-			delete screens[i];
-		}
 		delete screens;
 	}
 	if (regions) {
@@ -296,22 +296,22 @@ void ScreenCap(unsigned int i) {
 		return;
 
 	BitBlt(hdcBitmap, 0, 0, ScreenX, ScreenY, hdcScreen, 0, 0, SRCCOPY);
-	GetDIBits(hdcScreenCopy, hBitmap, 0, ScreenY, screens[i], (BITMAPINFO*)&bmi, DIB_RGB_COLORS);
+	GetDIBits(hdcScreenCopy, hBitmap, 0, ScreenY, &screens[i*FRAME_SIZE], (BITMAPINFO*)&bmi, DIB_RGB_COLORS);
 }
 
 inline int PosB(int i, int x, int y)
 {
-	return screens[i][4 * ((y*ScreenX) + x)];
+	return screens[i*FRAME_SIZE + 4 * ((y*ScreenX) + x)];
 }
 
 inline int PosG(int i, int x, int y)
 {
-	return screens[i][4 * ((y*ScreenX) + x) + 1];
+	return screens[i*FRAME_SIZE + 4 * ((y*ScreenX) + x) + 1];
 }
 
 inline int PosR(int i, int x, int y)
 {
-	return screens[i][4 * ((y*ScreenX) + x) + 2];
+	return screens[i*FRAME_SIZE + 4 * ((y*ScreenX) + x) + 2];
 }
 
 int euclidean_modulus(int a, int b) {
