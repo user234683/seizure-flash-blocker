@@ -70,8 +70,8 @@ std::vector<Point> to_uncover;
 //Window variables
 HWND captureWindow;
 HWND foundWindow;
-HDC hScreen;
 HDC hdcScreen;
+HDC hdcScreenCopy;
 HDC hdcBitmap;
 HBITMAP hBitmap;
 BITMAPINFOHEADER bmi = { 0 };
@@ -213,7 +213,7 @@ void initialize() {
 	//Some of the chrome processors may be service or even nonsense. We will take the process ID
 	//and window handle that contains the visible window of Chrome
 	captureWindow = findChrome();
-	hScreen = GetWindowDC(captureWindow);
+	hdcScreen = GetWindowDC(captureWindow);
 	RECT windowRect;
 	GetWindowRect(captureWindow, &windowRect);
 	ScreenX = windowRect.right - windowRect.left;
@@ -230,9 +230,9 @@ void initialize() {
 
 	TOTAL_REGION_THRESHOLD = THRESHOLD * (ScreenX / HORIZ_REGIONS) * (ScreenY / VERT_REGIONS) * NUM_FRAMES;
 
-	hdcScreen = CreateCompatibleDC(hScreen);
-	hdcBitmap = CreateCompatibleDC(hScreen);
-	hBitmap = CreateCompatibleBitmap(hScreen, ScreenX, ScreenY);
+	hdcScreenCopy = CreateCompatibleDC(hdcScreen);
+	hdcBitmap = CreateCompatibleDC(hdcScreen);
+	hBitmap = CreateCompatibleBitmap(hdcScreen, ScreenX, ScreenY);
 	SelectObject(hdcBitmap, hBitmap);
 
 	// allocate memory for screens and regions
@@ -281,8 +281,8 @@ void cleanup() {
 		delete regions;
 	}
 
-	ReleaseDC(GetDesktopWindow(), hScreen);
-	DeleteDC(hdcScreen);
+	ReleaseDC(GetDesktopWindow(), hdcScreen);
+	DeleteDC(hdcScreenCopy);
 	DeleteDC(hdcBitmap);
 	DeleteObject(hBitmap);
 
@@ -295,8 +295,8 @@ void ScreenCap(unsigned int i) {
 	if (i >= NUM_FRAMES)     // ensure never out of bounds
 		return;
 
-	BitBlt(hdcBitmap, 0, 0, ScreenX, ScreenY, hScreen, 0, 0, SRCCOPY);
-	GetDIBits(hdcScreen, hBitmap, 0, ScreenY, screens[i], (BITMAPINFO*)&bmi, DIB_RGB_COLORS);
+	BitBlt(hdcBitmap, 0, 0, ScreenX, ScreenY, hdcScreen, 0, 0, SRCCOPY);
+	GetDIBits(hdcScreenCopy, hBitmap, 0, ScreenY, screens[i], (BITMAPINFO*)&bmi, DIB_RGB_COLORS);
 }
 
 inline int PosB(int i, int x, int y)
