@@ -4,7 +4,6 @@
 #include <objidl.h>
 #include <gdiplus.h>
 #include <tlhelp32.h>
-#include <dwmapi.h>
 #include <string>
 #include <stdio.h>
 #include <vector>
@@ -12,7 +11,6 @@
 //Libraries
 using namespace Gdiplus;
 #pragma comment (lib,"Gdiplus.lib")
-#pragma comment (lib,"Dwmapi.lib")
 
 //Structs
 typedef struct {
