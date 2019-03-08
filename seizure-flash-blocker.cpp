@@ -25,14 +25,6 @@ const long long MAX_REGION_CHANGE = 255LL*255LL*REGION_SIDELENGTH_PIXELS*REGION_
 #define FRAME_RATE 30
 #define CAPTURE_TIMER_ID 12345 // arbitrary number
 
-//Structs
-typedef struct {
-	bool bad;
-	int frames_last_set;            // How many frames ago this was set as bad
-	long long total_change;      // aggregate color distance change for all pixels in region over last NUM_FRAMES frames
-	long long changes[NUM_FRAMES - 1];    // circular buffer of aggregate color distance changes between each frame in the region.
-} RegionStatus;
-
 
 //Class name for registering windows class. Name is arbitrary.
 std::wstring window_className = L"OverlayWindowClass";
@@ -70,6 +62,15 @@ long long TOTAL_REGION_THRESHOLD;    // threshold for aggregate change for an en
 long long TOTAL_REGION_THRESHOLD_BOTTOM;
 long long TOTAL_REGION_THRESHOLD_RIGHT;
 long long TOTAL_REGION_THRESHOLD_BOTTOM_RIGHT;
+
+
+#define CHANGES_LENGTH NUM_FRAMES -1
+typedef struct {
+	bool bad;
+	int frames_last_set;            // How many frames ago this was set as bad
+	long long total_change;      // aggregate color distance change for all pixels in region over last NUM_FRAMES frames
+	long long changes[CHANGES_LENGTH];    // circular buffer of aggregate color distance changes between each frame in the region.
+} RegionStatus;
 
 RegionStatus* regions;
 int changes_start;         // start index of the changes circular buffer in RegionStatus
@@ -440,6 +441,12 @@ void newFrame() {
     analyzeRegion(prev_frame_i, new_frame_i, TOTAL_REGION_THRESHOLD_BOTTOM_RIGHT,
                   HORIZ_REGIONS - 1,    VERT_REGIONS - 1, 
                   HORIZ_REMAINDER,      VERT_REMAINDER);
+
+    // advance changes circular buffer
+    changes_start++;
+    if (changes_start >= CHANGES_LENGTH)
+        changes_start = 0;
+
 }
 
 //Every X seconds, we will call a new frame which depends on the FPS we have set.
