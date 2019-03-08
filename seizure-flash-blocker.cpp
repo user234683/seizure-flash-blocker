@@ -12,13 +12,6 @@
 using namespace Gdiplus;
 #pragma comment (lib,"Gdiplus.lib")
 
-//Structs
-typedef struct {
-	bool bad;
-	int frames_last_set;            // How many frames ago this was set as bad
-	int total_change;      // aggregate color distance change for all pixels in region over last NUM_FRAMES frames
-	int* changes;          // circular buffer of aggregate color distance changes between each frame in the region. Length of NUM_FRAMES - 1
-} RegionStatus;
 
 //Precompiled constants
 #define NUM_FRAMES 6
@@ -27,6 +20,16 @@ typedef struct {
 #define MIN_HORIZ_REGIONS 20
 #define MIN_VERT_REGIONS 10
 #define FRAME_RATE 30
+
+
+//Structs
+typedef struct {
+	bool bad;
+	int frames_last_set;            // How many frames ago this was set as bad
+	int total_change;      // aggregate color distance change for all pixels in region over last NUM_FRAMES frames
+	int changes[NUM_FRAMES - 1];    // circular buffer of aggregate color distance changes between each frame in the region.
+} RegionStatus;
+
 
 //Class name for registering windows class. Name is arbitrary.
 std::wstring window_className = L"OverlayWindowClass";
@@ -62,7 +65,7 @@ int VERT_MULTIPLIER;
 
 int TOTAL_REGION_THRESHOLD;    // threshold for aggregate change for an entire region over NUM_FRAMES frames
 
-RegionStatus** regions;
+RegionStatus* regions;
 int changes_start;         // start index of the changes circular buffer in RegionStatus
 
 
@@ -243,14 +246,7 @@ void initialize() {
 
 	// allocate memory for screens and regions
 	screens = new BYTE[NUM_FRAMES*FRAME_SIZE];
-
-	regions = new RegionStatus*[HORIZ_REGIONS];
-	for (int i = 0; i < HORIZ_REGIONS; i++) {
-		regions[i] = new RegionStatus[VERT_REGIONS];
-		for (int j = 0; j < VERT_REGIONS; j++) {
-			regions[i][j].changes = new int[NUM_FRAMES - 1];
-		}
-	}
+	regions = new RegionStatus[HORIZ_REGIONS*VERT_REGIONS];
 
 	//Do a worst case allocation by preparing a premade size of a vector
 	to_cover.reserve(HORIZ_REGIONS*VERT_REGIONS);
@@ -272,12 +268,6 @@ void cleanup() {
 		delete screens;
 	}
 	if (regions) {
-		for (int i = 0; i < HORIZ_REGIONS; i++) {
-			for (int j = 0; j < VERT_REGIONS; j++) {
-				delete regions[i][j].changes;
-			}
-			delete regions[i];
-		}
 		delete regions;
 	}
 
@@ -367,7 +357,7 @@ void newFrame() {
 	for (int horiz_r = 0; horiz_r < HORIZ_REGIONS; horiz_r++) {
 		for (int vert_r = 0; vert_r < VERT_REGIONS; vert_r++) {
 			//In this region, whenever we add a new frame and remove a oldest frame
-			RegionStatus* region = &regions[horiz_r][vert_r];
+			RegionStatus* region = &regions[horiz_r*VERT_REGIONS + vert_r];
 			//We subtract the oldest aggregate change from the oldest frame
 			region->total_change -= region->changes[changes_start];
 			unsigned int new_change = 0;
