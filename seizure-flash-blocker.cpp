@@ -20,7 +20,7 @@ using namespace Gdiplus;
 #define MIN_HORIZ_REGIONS 20
 #define MIN_VERT_REGIONS 10
 #define FRAME_RATE 30
-
+#define CAPTURE_TIMER_ID 12345 // arbitrary number
 
 //Structs
 typedef struct {
@@ -211,7 +211,7 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM fuckcpp) {
 
 }
 HWND findChrome() {
-	EnumWindows((WNDENUMPROC)&EnumWindowsProc, NULL);
+	EnumWindows((WNDENUMPROC)&EnumWindowsProc, 0);
 	return foundWindow;
 }
 void initialize() {
@@ -469,7 +469,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE prevInstance, LPSTR str, int
 	InitializeWindow(hInstance);
 
 	// capture the screen at 10 fps
-	SetTimer(hWnd, NULL, (int)(1.0f / FRAME_RATE * 1000), (TIMERPROC)&timerCallback);
+	SetTimer(hWnd, CAPTURE_TIMER_ID, (int)(1.0f / FRAME_RATE * 1000), (TIMERPROC)&timerCallback);
 
 
 	//Main Message loop that will iterate over and over until it receives a destroy message
