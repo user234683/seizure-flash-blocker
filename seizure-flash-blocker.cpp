@@ -15,12 +15,14 @@ using namespace Gdiplus;
 
 //Precompiled constants
 #define NUM_FRAMES 6
-#define THRESHOLD 14400LL  // threshold for a single change in an individual pixel, which if repeated is problematic
+#define CHANGE_TYPE long
+#define THRESHOLD 14400  // threshold for a single change in an individual pixel, which if repeated is problematic
 
 #define REGION_SIDELENGTH_PIXELS 50 // Side length in pixels of the square regions
 
-// Just a compiler test variable to make sure it doesn't overflow, these numbers get big
-const long long MAX_REGION_CHANGE = 255LL*255LL*REGION_SIDELENGTH_PIXELS*REGION_SIDELENGTH_PIXELS*NUM_FRAMES;
+
+// Just a compiler test variable to make sure it can't overflow, these numbers get big
+const CHANGE_TYPE MAX_REGION_CHANGE = (CHANGE_TYPE)(1)*255*255*REGION_SIDELENGTH_PIXELS*REGION_SIDELENGTH_PIXELS*NUM_FRAMES;
 
 #define FRAME_RATE 30
 #define CAPTURE_TIMER_ID 12345 // arbitrary number
@@ -58,17 +60,17 @@ int HORIZ_REMAINDER;
 int VERT_REGIONS;
 int VERT_REMAINDER;
 
-long long TOTAL_REGION_THRESHOLD;    // threshold for aggregate change for an entire region between two frames
-long long TOTAL_REGION_THRESHOLD_BOTTOM;
-long long TOTAL_REGION_THRESHOLD_RIGHT;
-long long TOTAL_REGION_THRESHOLD_BOTTOM_RIGHT;
+CHANGE_TYPE TOTAL_REGION_THRESHOLD;    // threshold for aggregate change for an entire region between two frames
+CHANGE_TYPE TOTAL_REGION_THRESHOLD_BOTTOM;
+CHANGE_TYPE TOTAL_REGION_THRESHOLD_RIGHT;
+CHANGE_TYPE TOTAL_REGION_THRESHOLD_BOTTOM_RIGHT;
 
 
 #define CHANGES_LENGTH NUM_FRAMES -1
 typedef struct {
 	bool bad;
 	int frames_last_set;            // How many frames ago this was set as bad
-	long long changes[CHANGES_LENGTH];    // circular buffer of aggregate color distance changes between each frame in the region.
+	CHANGE_TYPE changes[CHANGES_LENGTH];    // circular buffer of aggregate color distance changes between each frame in the region.
 } RegionStatus;
 
 RegionStatus* regions;
@@ -243,13 +245,13 @@ void initialize() {
 	VERT_REMAINDER = ScreenY % REGION_SIDELENGTH_PIXELS;
 	VERT_REGIONS = ScreenY / REGION_SIDELENGTH_PIXELS + (VERT_REMAINDER == 0 ? 0 : 1);
 
-	TOTAL_REGION_THRESHOLD = THRESHOLD * REGION_SIDELENGTH_PIXELS * REGION_SIDELENGTH_PIXELS;
+	TOTAL_REGION_THRESHOLD = (CHANGE_TYPE)(1)*THRESHOLD * REGION_SIDELENGTH_PIXELS * REGION_SIDELENGTH_PIXELS;
 	// For the special regions to the right of the screen that don't quite fit
-	TOTAL_REGION_THRESHOLD_RIGHT = THRESHOLD * HORIZ_REMAINDER * REGION_SIDELENGTH_PIXELS;
+	TOTAL_REGION_THRESHOLD_RIGHT = (CHANGE_TYPE)(1)*THRESHOLD * HORIZ_REMAINDER * REGION_SIDELENGTH_PIXELS;
 	// ditto but for the bottom
-	TOTAL_REGION_THRESHOLD_BOTTOM = THRESHOLD * REGION_SIDELENGTH_PIXELS * VERT_REMAINDER;
+	TOTAL_REGION_THRESHOLD_BOTTOM = (CHANGE_TYPE)(1)*THRESHOLD * REGION_SIDELENGTH_PIXELS * VERT_REMAINDER;
 	// ditto but for bottom right
-	TOTAL_REGION_THRESHOLD_BOTTOM_RIGHT = THRESHOLD * HORIZ_REMAINDER * VERT_REMAINDER;
+	TOTAL_REGION_THRESHOLD_BOTTOM_RIGHT = (CHANGE_TYPE)(1)*THRESHOLD * HORIZ_REMAINDER * VERT_REMAINDER;
 
 	hdcScreenCopy = CreateCompatibleDC(hdcScreen);
 	hdcBitmap = CreateCompatibleDC(hdcScreen);
@@ -343,14 +345,14 @@ void uncoverRegion(int horiz_coord, int vert_coord) {
 	to_uncover.push_back(rect);
 }
 
-inline void analyzeRegion(int prev_frame_i, int new_frame_i, long long region_threshold,
+inline void analyzeRegion(int prev_frame_i, int new_frame_i, CHANGE_TYPE region_threshold,
                           int horiz_r, int vert_r,
                           int region_width, int region_height) {
 
 
     //In this region, whenever we add a new frame and remove a oldest frame
     RegionStatus* region = &regions[horiz_r*VERT_REGIONS + vert_r];
-    long long new_change = 0;
+    CHANGE_TYPE new_change = 0;
     //This will compute the aggregate change of the vectors of each pixel RGB within the frame
     for (int x_i = 0; x_i < region_width; x_i++) {
         int x = horiz_r * REGION_SIDELENGTH_PIXELS + x_i;
