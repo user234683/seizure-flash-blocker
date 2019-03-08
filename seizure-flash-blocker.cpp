@@ -58,7 +58,7 @@ int HORIZ_REMAINDER;
 int VERT_REGIONS;
 int VERT_REMAINDER;
 
-long long TOTAL_REGION_THRESHOLD;    // threshold for aggregate change for an entire region over NUM_FRAMES frames
+long long TOTAL_REGION_THRESHOLD;    // threshold for aggregate change for an entire region between two frames
 long long TOTAL_REGION_THRESHOLD_BOTTOM;
 long long TOTAL_REGION_THRESHOLD_RIGHT;
 long long TOTAL_REGION_THRESHOLD_BOTTOM_RIGHT;
@@ -68,7 +68,6 @@ long long TOTAL_REGION_THRESHOLD_BOTTOM_RIGHT;
 typedef struct {
 	bool bad;
 	int frames_last_set;            // How many frames ago this was set as bad
-	long long total_change;      // aggregate color distance change for all pixels in region over last NUM_FRAMES frames
 	long long changes[CHANGES_LENGTH];    // circular buffer of aggregate color distance changes between each frame in the region.
 } RegionStatus;
 
@@ -244,13 +243,13 @@ void initialize() {
 	VERT_REMAINDER = ScreenY % REGION_SIDELENGTH_PIXELS;
 	VERT_REGIONS = ScreenY / REGION_SIDELENGTH_PIXELS + (VERT_REMAINDER == 0 ? 0 : 1);
 
-	TOTAL_REGION_THRESHOLD = THRESHOLD * REGION_SIDELENGTH_PIXELS * REGION_SIDELENGTH_PIXELS * NUM_FRAMES;
+	TOTAL_REGION_THRESHOLD = THRESHOLD * REGION_SIDELENGTH_PIXELS * REGION_SIDELENGTH_PIXELS;
 	// For the special regions to the right of the screen that don't quite fit
-	TOTAL_REGION_THRESHOLD_RIGHT = THRESHOLD * HORIZ_REMAINDER * REGION_SIDELENGTH_PIXELS * NUM_FRAMES;
+	TOTAL_REGION_THRESHOLD_RIGHT = THRESHOLD * HORIZ_REMAINDER * REGION_SIDELENGTH_PIXELS;
 	// ditto but for the bottom
-	TOTAL_REGION_THRESHOLD_BOTTOM = THRESHOLD * REGION_SIDELENGTH_PIXELS * VERT_REMAINDER * NUM_FRAMES;
+	TOTAL_REGION_THRESHOLD_BOTTOM = THRESHOLD * REGION_SIDELENGTH_PIXELS * VERT_REMAINDER;
 	// ditto but for bottom right
-	TOTAL_REGION_THRESHOLD_BOTTOM_RIGHT = THRESHOLD * HORIZ_REMAINDER * VERT_REMAINDER * NUM_FRAMES;
+	TOTAL_REGION_THRESHOLD_BOTTOM_RIGHT = THRESHOLD * HORIZ_REMAINDER * VERT_REMAINDER;
 
 	hdcScreenCopy = CreateCompatibleDC(hdcScreen);
 	hdcBitmap = CreateCompatibleDC(hdcScreen);
@@ -351,8 +350,6 @@ inline void analyzeRegion(int prev_frame_i, int new_frame_i, long long region_th
 
     //In this region, whenever we add a new frame and remove a oldest frame
     RegionStatus* region = &regions[horiz_r*VERT_REGIONS + vert_r];
-    //We subtract the oldest aggregate change from the oldest frame
-    region->total_change -= region->changes[changes_start];
     long long new_change = 0;
     //This will compute the aggregate change of the vectors of each pixel RGB within the frame
     for (int x_i = 0; x_i < region_width; x_i++) {
@@ -371,12 +368,14 @@ inline void analyzeRegion(int prev_frame_i, int new_frame_i, long long region_th
     }
 
     region->changes[changes_start] = new_change;
-    //We then add the newest frame. By doing this, instead of adding all the NUM_FRAMES frames which costs
-    //NUM_FRAMES operations we only use 2 operations regardless of NUM_FRAMES frames we have
-    region->total_change += new_change;
 
+    int number_of_thresholds = 0;
+    for(int i = 0; i < CHANGES_LENGTH; i++){
+        number_of_thresholds += (region->changes[i] > region_threshold);
+
+    }
     // check if the changes is extreme. The aggregate change is very high
-    if (region->total_change > region_threshold) {
+    if (number_of_thresholds >= NUM_FRAMES - 3) {
         region->frames_last_set = 0;
         if (!region->bad) {
             //If so than this may/may not be a epilepsy and will cover it with a red color.
