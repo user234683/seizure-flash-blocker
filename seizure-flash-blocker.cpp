@@ -15,10 +15,13 @@ using namespace Gdiplus;
 
 //Precompiled constants
 #define NUM_FRAMES 6
-#define THRESHOLD 14400  // threshold for a single change in an individual pixel, which if repeated is problematic
-// Number of regions to divide the screen into
-#define MIN_HORIZ_REGIONS 20
-#define MIN_VERT_REGIONS 10
+#define THRESHOLD 14400LL  // threshold for a single change in an individual pixel, which if repeated is problematic
+
+#define REGION_SIDELENGTH_PIXELS 50 // Side length in pixels of the square regions
+
+// Just a compiler test variable to make sure it doesn't overflow, these numbers get big
+const long long MAX_REGION_CHANGE = 255LL*255LL*REGION_SIDELENGTH_PIXELS*REGION_SIDELENGTH_PIXELS*NUM_FRAMES;
+
 #define FRAME_RATE 30
 #define CAPTURE_TIMER_ID 12345 // arbitrary number
 
@@ -26,8 +29,8 @@ using namespace Gdiplus;
 typedef struct {
 	bool bad;
 	int frames_last_set;            // How many frames ago this was set as bad
-	int total_change;      // aggregate color distance change for all pixels in region over last NUM_FRAMES frames
-	int changes[NUM_FRAMES - 1];    // circular buffer of aggregate color distance changes between each frame in the region.
+	long long total_change;      // aggregate color distance change for all pixels in region over last NUM_FRAMES frames
+	long long changes[NUM_FRAMES - 1];    // circular buffer of aggregate color distance changes between each frame in the region.
 } RegionStatus;
 
 
@@ -59,19 +62,22 @@ int FRAME_SIZE;
 int screens_start = 0;
 
 int HORIZ_REGIONS;     // integers calculated based on actual screen size
-int HORIZ_MULTIPLIER;
+int HORIZ_REMAINDER;
 int VERT_REGIONS;
-int VERT_MULTIPLIER;
+int VERT_REMAINDER;
 
-int TOTAL_REGION_THRESHOLD;    // threshold for aggregate change for an entire region over NUM_FRAMES frames
+long long TOTAL_REGION_THRESHOLD;    // threshold for aggregate change for an entire region over NUM_FRAMES frames
+long long TOTAL_REGION_THRESHOLD_BOTTOM;
+long long TOTAL_REGION_THRESHOLD_RIGHT;
+long long TOTAL_REGION_THRESHOLD_BOTTOM_RIGHT;
 
 RegionStatus* regions;
 int changes_start;         // start index of the changes circular buffer in RegionStatus
 
 
 // These are the lists of regions to cover or uncover in the WM_PAINT event
-std::vector<Point> to_cover;
-std::vector<Point> to_uncover;
+std::vector<RECT> to_cover;
+std::vector<RECT> to_uncover;
 
 //Window variables
 HWND captureWindow;
@@ -231,13 +237,19 @@ void initialize() {
 	windowOffsetY = windowRect.top;
 
 	//Split the window into regions
-	HORIZ_REGIONS = smallestFactorGreaterThan(ScreenX, MIN_HORIZ_REGIONS);
-	VERT_REGIONS = smallestFactorGreaterThan(ScreenY, MIN_VERT_REGIONS);
+	HORIZ_REMAINDER = ScreenX % REGION_SIDELENGTH_PIXELS;
+	HORIZ_REGIONS = ScreenX / REGION_SIDELENGTH_PIXELS + (HORIZ_REMAINDER == 0 ? 0 : 1);
 
-	HORIZ_MULTIPLIER = ScreenX / HORIZ_REGIONS;
-	VERT_MULTIPLIER = ScreenY / VERT_REGIONS;
+	VERT_REMAINDER = ScreenY % REGION_SIDELENGTH_PIXELS;
+	VERT_REGIONS = ScreenY / REGION_SIDELENGTH_PIXELS + (VERT_REMAINDER == 0 ? 0 : 1);
 
-	TOTAL_REGION_THRESHOLD = THRESHOLD * (ScreenX / HORIZ_REGIONS) * (ScreenY / VERT_REGIONS) * NUM_FRAMES;
+	TOTAL_REGION_THRESHOLD = THRESHOLD * REGION_SIDELENGTH_PIXELS * REGION_SIDELENGTH_PIXELS * NUM_FRAMES;
+	// For the special regions to the right of the screen that don't quite fit
+	TOTAL_REGION_THRESHOLD_RIGHT = THRESHOLD * HORIZ_REMAINDER * REGION_SIDELENGTH_PIXELS * NUM_FRAMES;
+	// ditto but for the bottom
+	TOTAL_REGION_THRESHOLD_BOTTOM = THRESHOLD * REGION_SIDELENGTH_PIXELS * VERT_REMAINDER * NUM_FRAMES;
+	// ditto but for bottom right
+	TOTAL_REGION_THRESHOLD_BOTTOM_RIGHT = THRESHOLD * HORIZ_REMAINDER * VERT_REMAINDER * NUM_FRAMES;
 
 	hdcScreenCopy = CreateCompatibleDC(hdcScreen);
 	hdcBitmap = CreateCompatibleDC(hdcScreen);
@@ -311,27 +323,77 @@ int euclidean_modulus(int a, int b) {
 	return m;
 }
 
-void coverRegion(int horiz_coord, int vert_coord) {
+inline RECT get_region_rect(int horiz_coord, int vert_coord) {
 	RECT rect;
-	rect.top = vert_coord * VERT_MULTIPLIER + windowOffsetY;
-	rect.left = horiz_coord * HORIZ_MULTIPLIER + windowOffsetX;
-	rect.bottom = (vert_coord + 1) * VERT_MULTIPLIER + windowOffsetY;
-	rect.right = (horiz_coord + 1) * HORIZ_MULTIPLIER + windowOffsetX;
+	rect.top = vert_coord * REGION_SIDELENGTH_PIXELS + windowOffsetY;
+	rect.left = horiz_coord * REGION_SIDELENGTH_PIXELS + windowOffsetX;
+	rect.bottom = rect.top + (vert_coord == VERT_REGIONS - 1 ? VERT_REMAINDER : REGION_SIDELENGTH_PIXELS);
+	rect.right = rect.left + (horiz_coord == HORIZ_REGIONS - 1 ? HORIZ_REMAINDER : REGION_SIDELENGTH_PIXELS);
+    return rect;
+}
 
+void coverRegion(int horiz_coord, int vert_coord) {
+	RECT rect = get_region_rect(horiz_coord, vert_coord);
 	InvalidateRect(hWnd, &rect, 0);
-	to_cover.push_back(Point(horiz_coord, vert_coord));
+	to_cover.push_back(rect);
 }
 void uncoverRegion(int horiz_coord, int vert_coord) {
-	RECT rect;
-	rect.top = vert_coord * VERT_MULTIPLIER + windowOffsetY;
-	rect.left = horiz_coord * HORIZ_MULTIPLIER + windowOffsetX;
-	rect.bottom = (vert_coord + 1) * VERT_MULTIPLIER + windowOffsetY;
-	rect.right = (horiz_coord + 1) * HORIZ_MULTIPLIER + windowOffsetX;
-
+	RECT rect = get_region_rect(horiz_coord, vert_coord);
 	InvalidateRect(hWnd, &rect, 0);
-	to_uncover.push_back(Point(horiz_coord, vert_coord));
+	to_uncover.push_back(rect);
 }
 
+inline void analyzeRegion(int prev_frame_i, int new_frame_i, long long region_threshold,
+                          int horiz_r, int vert_r,
+                          int region_width, int region_height) {
+
+
+    //In this region, whenever we add a new frame and remove a oldest frame
+    RegionStatus* region = &regions[horiz_r*VERT_REGIONS + vert_r];
+    //We subtract the oldest aggregate change from the oldest frame
+    region->total_change -= region->changes[changes_start];
+    long long new_change = 0;
+    //This will compute the aggregate change of the vectors of each pixel RGB within the frame
+    for (int x_i = 0; x_i < region_width; x_i++) {
+        int x = horiz_r * REGION_SIDELENGTH_PIXELS + x_i;
+        for (int y_i = 0; y_i < region_height; y_i++) {
+            int y = vert_r * REGION_SIDELENGTH_PIXELS + y_i;
+
+            int deltaB = PosB(new_frame_i, x, y) - PosB(prev_frame_i, x, y);
+            int deltaG = PosG(new_frame_i, x, y) - PosG(prev_frame_i, x, y);
+            int deltaR = PosR(new_frame_i, x, y) - PosR(prev_frame_i, x, y);
+
+            new_change += deltaB * deltaB;
+            new_change += deltaG * deltaG;
+            new_change += deltaR * deltaR;
+        }
+    }
+
+    region->changes[changes_start] = new_change;
+    //We then add the newest frame. By doing this, instead of adding all the NUM_FRAMES frames which costs
+    //NUM_FRAMES operations we only use 2 operations regardless of NUM_FRAMES frames we have
+    region->total_change += new_change;
+
+    // check if the changes is extreme. The aggregate change is very high
+    if (region->total_change > region_threshold) {
+        region->frames_last_set = 0;
+        if (!region->bad) {
+            //If so than this may/may not be a epilepsy and will cover it with a red color.
+            region->bad = true;
+            coverRegion(horiz_r, vert_r);
+        }
+    }
+    else {
+        // If not remove the cover and consider the region safe
+        region->frames_last_set++;
+        if (region->bad && region->frames_last_set >= NUM_FRAMES) {
+            region->bad = false;
+            uncoverRegion(horiz_r, vert_r);
+        }
+    }
+
+
+}
 
 //BYTE screens[NUM_FRAMES][4 * ScreenX*ScreenY];
 //unsigned int screens_start = 0;
@@ -354,54 +416,30 @@ void newFrame() {
 		prev_frame_i += NUM_FRAMES;
 
 	//The following finds the aggregate distance of all region.
-	for (int horiz_r = 0; horiz_r < HORIZ_REGIONS; horiz_r++) {
-		for (int vert_r = 0; vert_r < VERT_REGIONS; vert_r++) {
-			//In this region, whenever we add a new frame and remove a oldest frame
-			RegionStatus* region = &regions[horiz_r*VERT_REGIONS + vert_r];
-			//We subtract the oldest aggregate change from the oldest frame
-			region->total_change -= region->changes[changes_start];
-			unsigned int new_change = 0;
-			//This will compute the aggregate change of the vectors of each pixel RGB within the frame
-			for (int x_i = 0; x_i < HORIZ_MULTIPLIER; x_i++) {
-				int x = horiz_r * HORIZ_MULTIPLIER + x_i;
-				for (int y_i = 0; y_i < VERT_MULTIPLIER; y_i++) {
-					int y = vert_r * VERT_MULTIPLIER + y_i;
-
-					int deltaB = PosB(new_frame_i, x, y) - PosB(prev_frame_i, x, y);
-					int deltaG = PosG(new_frame_i, x, y) - PosG(prev_frame_i, x, y);
-					int deltaR = PosR(new_frame_i, x, y) - PosR(prev_frame_i, x, y);
-
-					new_change += deltaB * deltaB;
-					new_change += deltaG * deltaG;
-					new_change += deltaR * deltaR;
-				}
-			}
-
-			region->changes[changes_start] = new_change;
-			//We then add the newest frame. By doing this, instead of adding all the NUM_FRAMES frames which costs
-			//NUM_FRAMES operations we only use 2 operations regardless of NUM_FRAMES frames we have
-			region->total_change += new_change;
-
-			// check if the changes is extreme. The aggregate change is very high
-			if (region->total_change > TOTAL_REGION_THRESHOLD) {
-				region->frames_last_set = 0;
-				if (!region->bad) {
-					//If so than this may/may not be a epilepsy and will cover it with a red color.
-					region->bad = true;
-					coverRegion(horiz_r, vert_r);
-				}
-			}
-			else {
-				// If not remove the cover and consider the region safe
-				region->frames_last_set++;
-				if (region->bad && region->frames_last_set >= NUM_FRAMES) {
-					region->bad = false;
-					uncoverRegion(horiz_r, vert_r);
-				}
-			}
+	for (int horiz_r = 0; horiz_r < HORIZ_REGIONS - 1; horiz_r++) {
+		for (int vert_r = 0; vert_r < VERT_REGIONS - 1; vert_r++) {
+            // general case
+            analyzeRegion(prev_frame_i, new_frame_i, TOTAL_REGION_THRESHOLD,
+                          horiz_r,                  vert_r,
+                          REGION_SIDELENGTH_PIXELS, REGION_SIDELENGTH_PIXELS);
 		}
+        // first special case: regions at bottom of screen
+        analyzeRegion(prev_frame_i, new_frame_i, TOTAL_REGION_THRESHOLD_BOTTOM,
+                      horiz_r,                  VERT_REGIONS - 1,
+                      REGION_SIDELENGTH_PIXELS, VERT_REMAINDER);
 	}
 
+    for (int vert_r = 0; vert_r < VERT_REGIONS - 1; vert_r++) {
+        // second special case: regions at right of screen
+        analyzeRegion(prev_frame_i, new_frame_i, TOTAL_REGION_THRESHOLD_RIGHT,
+                      HORIZ_REGIONS - 1,    vert_r, 
+                      HORIZ_REMAINDER,      REGION_SIDELENGTH_PIXELS);
+    }
+
+    // third special case: region at bottom right of screen
+    analyzeRegion(prev_frame_i, new_frame_i, TOTAL_REGION_THRESHOLD_BOTTOM_RIGHT,
+                  HORIZ_REGIONS - 1,    VERT_REGIONS - 1, 
+                  HORIZ_REMAINDER,      VERT_REMAINDER);
 }
 
 //Every X seconds, we will call a new frame which depends on the FPS we have set.
@@ -424,19 +462,18 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		//Begin Paint
 		hDC = ::BeginPaint(hWnd, &ps);
 
-		int region_x, region_y;
 		Graphics graphics(hDC);
 		SolidBrush uncover_pen(Color(255, 0, 0, 0));
 		SolidBrush cover_pen(Color(255, 255, 1, 1));
+        RECT rect;
 		for (int i = 0; i < to_cover.size(); i++) {
-			region_x = to_cover[i].X;
-			region_y = to_cover[i].Y;
-			graphics.FillRectangle(&cover_pen, region_x*HORIZ_MULTIPLIER + windowOffsetX, region_y*VERT_MULTIPLIER + windowOffsetY, HORIZ_MULTIPLIER, VERT_MULTIPLIER);
+            rect = to_cover[i];
+            // cast because the rect uses longs and compiler doesn't know whether to cast to float or int in this overloaded function
+			graphics.FillRectangle(&cover_pen, (int)rect.left, (int)rect.top, (int)(rect.right - rect.left), (int)(rect.bottom - rect.top));
 		}
 		for (int i = 0; i < to_uncover.size(); i++) {
-			region_x = to_uncover[i].X;
-			region_y = to_uncover[i].Y;
-			graphics.FillRectangle(&uncover_pen, region_x*HORIZ_MULTIPLIER + windowOffsetX, region_y*VERT_MULTIPLIER + windowOffsetY, HORIZ_MULTIPLIER, VERT_MULTIPLIER);
+            rect = to_uncover[i];
+			graphics.FillRectangle(&uncover_pen, (int)rect.left, (int)rect.top, (int)(rect.right - rect.left), (int)(rect.bottom - rect.top));
 		}
 		to_uncover.clear();
 		to_cover.clear();
