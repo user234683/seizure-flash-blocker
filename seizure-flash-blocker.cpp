@@ -7,6 +7,7 @@
 #include <string>
 #include <stdio.h>
 #include <vector>
+#include <math.h>
 
 //Libraries
 using namespace Gdiplus;
@@ -14,18 +15,28 @@ using namespace Gdiplus;
 
 
 //Precompiled constants
-#define NUM_FRAMES 6
-#define CHANGE_TYPE long
-#define THRESHOLD 14400  // threshold for a single change in an individual pixel, which if repeated is problematic
+#define CAPTURE_TIMER_ID 12345 // arbitrary number
+#define FRAME_RATE 30
 
+#define MAX_FLASH_PERIOD 200 // Measured in milliseconds. If something is flashing at least this fast it will be covered.
+#define NUM_FRAMES 2         // How many screen captures to store at once
+#define THRESHOLDS_NEEDED 3 // How many times it needs to change between color A to color B at min rate before covering it
+
+//const float ANALYSIS_WINDOW = 1.0f/2*MAX_FLASH_PERIOD/1000*(1+THRESHOLDS_NEEDED);
+//const int NUM_ANALYSIS_FRAMES = (int)(ceil(ANALYSIS_WINDOW*FRAME_RATE));
+
+#define NUM_ANALYSIS_FRAMES (MAX_FLASH_PERIOD*(1+THRESHOLDS_NEEDED)*FRAME_RATE/2000 + (((MAX_FLASH_PERIOD*(1+THRESHOLDS_NEEDED)*FRAME_RATE) % 2000) != 0))
+
+#define CHANGE_TYPE long
+#define THRESHOLD 120 // threshold for a single change in an individual pixel, which if repeated is problematic
+#define SQUARED_THRESHOLD THRESHOLD*THRESHOLD
 #define REGION_SIDELENGTH_PIXELS 50 // Side length in pixels of the square regions
 
 
 // Just a compiler test variable to make sure it can't overflow, these numbers get big
 const CHANGE_TYPE MAX_REGION_CHANGE = (CHANGE_TYPE)(1)*255*255*REGION_SIDELENGTH_PIXELS*REGION_SIDELENGTH_PIXELS*NUM_FRAMES;
 
-#define FRAME_RATE 30
-#define CAPTURE_TIMER_ID 12345 // arbitrary number
+
 
 
 //Class name for registering windows class. Name is arbitrary.
@@ -66,7 +77,7 @@ CHANGE_TYPE TOTAL_REGION_THRESHOLD_RIGHT;
 CHANGE_TYPE TOTAL_REGION_THRESHOLD_BOTTOM_RIGHT;
 
 
-#define CHANGES_LENGTH NUM_FRAMES -1
+#define CHANGES_LENGTH (NUM_ANALYSIS_FRAMES - 1)
 typedef struct {
 	bool bad;
 	int frames_last_set;            // How many frames ago this was set as bad
@@ -245,13 +256,13 @@ void initialize() {
 	VERT_REMAINDER = ScreenY % REGION_SIDELENGTH_PIXELS;
 	VERT_REGIONS = ScreenY / REGION_SIDELENGTH_PIXELS + (VERT_REMAINDER == 0 ? 0 : 1);
 
-	TOTAL_REGION_THRESHOLD = (CHANGE_TYPE)(1)*THRESHOLD * REGION_SIDELENGTH_PIXELS * REGION_SIDELENGTH_PIXELS;
+	TOTAL_REGION_THRESHOLD = (CHANGE_TYPE)(1)*SQUARED_THRESHOLD * REGION_SIDELENGTH_PIXELS * REGION_SIDELENGTH_PIXELS;
 	// For the special regions to the right of the screen that don't quite fit
-	TOTAL_REGION_THRESHOLD_RIGHT = (CHANGE_TYPE)(1)*THRESHOLD * HORIZ_REMAINDER * REGION_SIDELENGTH_PIXELS;
+	TOTAL_REGION_THRESHOLD_RIGHT = (CHANGE_TYPE)(1)*SQUARED_THRESHOLD * HORIZ_REMAINDER * REGION_SIDELENGTH_PIXELS;
 	// ditto but for the bottom
-	TOTAL_REGION_THRESHOLD_BOTTOM = (CHANGE_TYPE)(1)*THRESHOLD * REGION_SIDELENGTH_PIXELS * VERT_REMAINDER;
+	TOTAL_REGION_THRESHOLD_BOTTOM = (CHANGE_TYPE)(1)*SQUARED_THRESHOLD * REGION_SIDELENGTH_PIXELS * VERT_REMAINDER;
 	// ditto but for bottom right
-	TOTAL_REGION_THRESHOLD_BOTTOM_RIGHT = (CHANGE_TYPE)(1)*THRESHOLD * HORIZ_REMAINDER * VERT_REMAINDER;
+	TOTAL_REGION_THRESHOLD_BOTTOM_RIGHT = (CHANGE_TYPE)(1)*SQUARED_THRESHOLD * HORIZ_REMAINDER * VERT_REMAINDER;
 
 	hdcScreenCopy = CreateCompatibleDC(hdcScreen);
 	hdcBitmap = CreateCompatibleDC(hdcScreen);
@@ -377,7 +388,7 @@ inline void analyzeRegion(int prev_frame_i, int new_frame_i, CHANGE_TYPE region_
 
     }
     // check if the changes is extreme. The aggregate change is very high
-    if (number_of_thresholds >= NUM_FRAMES - 3) {
+    if (number_of_thresholds >= THRESHOLDS_NEEDED) {
         region->frames_last_set = 0;
         if (!region->bad) {
             //If so than this may/may not be a epilepsy and will cover it with a red color.
@@ -388,7 +399,7 @@ inline void analyzeRegion(int prev_frame_i, int new_frame_i, CHANGE_TYPE region_
     else {
         // If not remove the cover and consider the region safe
         region->frames_last_set++;
-        if (region->bad && region->frames_last_set >= NUM_FRAMES) {
+        if (region->bad && region->frames_last_set >= NUM_ANALYSIS_FRAMES) {
             region->bad = false;
             uncoverRegion(horiz_r, vert_r);
         }
