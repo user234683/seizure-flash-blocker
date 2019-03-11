@@ -90,26 +90,19 @@ HDC hdcBitmap;
 HBITMAP hBitmap;
 BITMAPINFOHEADER bmi = { 0 };
 
-//Important functions since c++ is a forward declaration language that reads from top to bottom
-void InitializeWindow(HINSTANCE hInstance);
-void RegisterWindowClass(HINSTANCE hInstance);
-void GDI_Init();
-int smallestFactorGreaterThan(int x, int y);
-//Cover the region with a color to prevent epliepsy
-void coverRegion(int horiz_coord, int vert_coord);
-//Uncover the region with a color when there is no rapid color change.
-void uncoverRegion(int horiz_coord, int vert_coord);
-//Get R/G/B colors in that pixel
-inline int PosB(int i, int x, int y);
-inline int PosG(int i, int x, int y);
-inline int PosR(int i, int x, int y);
-//Find window handle of chrome
-HWND findChrome();
-//Iterate through all processors ran on this computer.
-BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM fuckcpp);
-//Update a new frame
-void newFrame();
-int euclidean_modulus(int a, int b);
+void RegisterWindowClass(HINSTANCE hInstance) {
+	window_className = L"Class1";
+	// Register window class
+	WNDCLASSEXW wcex = { 0 };
+	wcex.cbSize = sizeof(wcex);
+	wcex.style = CS_HREDRAW | CS_VREDRAW;
+	wcex.lpfnWndProc = WndProc;
+	wcex.hInstance = hInstance;
+	wcex.hCursor = ::LoadCursorW(NULL, (LPCWSTR)IDC_ARROW);
+	wcex.hbrBackground = (HBRUSH)::GetStockObject(BLACK_BRUSH);
+	wcex.lpszClassName = window_className.c_str();
+	::RegisterClassExW(&wcex);
+}
 
 void InitializeWindow(HINSTANCE hInstance) {
 
@@ -161,19 +154,6 @@ void GDI_Init() {
 	// Initialize GDI+. This allows us to draw alpha pixels
 
 	GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
-}
-void RegisterWindowClass(HINSTANCE hInstance) {
-	window_className = L"Class1";
-	// Register window class
-	WNDCLASSEXW wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.style = CS_HREDRAW | CS_VREDRAW;
-	wcex.lpfnWndProc = WndProc;
-	wcex.hInstance = hInstance;
-	wcex.hCursor = ::LoadCursorW(NULL, (LPCWSTR)IDC_ARROW);
-	wcex.hbrBackground = (HBRUSH)::GetStockObject(BLACK_BRUSH);
-	wcex.lpszClassName = window_className.c_str();
-	::RegisterClassExW(&wcex);
 }
 
 // finds the smallest factor of x greater than y
