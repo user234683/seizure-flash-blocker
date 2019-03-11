@@ -52,36 +52,36 @@ Additionally, every module gets the #define'd constants from constants.h
 
 //Every X seconds, we will call a new frame which depends on the FPS we have set.
 void timerCallback(HWND hwnd, UINT uMsg, UINT timerId, DWORD dwTime) {
-	newframe();
+    newframe();
 }
 
 
 int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE prevInstance, LPSTR str, int nCmdShow) {
 
-	MSG msg = { 0 };
+    MSG msg = { 0 };
 
-	// Module initialization. Order is important
+    // Module initialization. Order is important
     screeninfo_initialize();
-	cover_initialize(hInstance);
+    cover_initialize(hInstance);
     newframe_initialize();
 
 
-	// capture the screen at FRAME_RATE fps
-	SetTimer(NULL, CAPTURE_TIMER_ID, (int)(1.0f / FRAME_RATE * 1000), (TIMERPROC)&timerCallback);
+    // capture the screen at FRAME_RATE fps
+    SetTimer(NULL, CAPTURE_TIMER_ID, (int)(1.0f / FRAME_RATE * 1000), (TIMERPROC)&timerCallback);
 
 
-	//Main Message loop that will iterate over and over until it receives a destroy message
-	//in that case it is a ID of -1 and will close the app
-	while (::GetMessageW(&msg, NULL, 0, 0) > 0)
-	{
-		::TranslateMessage(&msg);
-		::DispatchMessageW(&msg);
-	}
+    //Main Message loop that will iterate over and over until it receives a destroy message
+    //in that case it is a ID of -1 and will close the app
+    while (::GetMessageW(&msg, NULL, 0, 0) > 0)
+    {
+        ::TranslateMessage(&msg);
+        ::DispatchMessageW(&msg);
+    }
 
-	//Module cleanup
-	newframe_cleanup();
+    //Module cleanup
+    newframe_cleanup();
     cover_cleanup();
     screeninfo_cleanup();
 
-	return (int)msg.wParam;
+    return (int)msg.wParam;
 }

@@ -40,9 +40,9 @@ CHANGE_TYPE TOTAL_REGION_THRESHOLD_BOTTOM_RIGHT;
 
 #define CHANGES_LENGTH NUM_FRAMES -1
 typedef struct {
-	bool bad;
-	int frames_last_set;            // How many frames ago this was set as bad
-	CHANGE_TYPE changes[CHANGES_LENGTH];    // circular buffer of aggregate color distance changes between each frame in the region.
+    bool bad;
+    int frames_last_set;            // How many frames ago this was set as bad
+    CHANGE_TYPE changes[CHANGES_LENGTH];    // circular buffer of aggregate color distance changes between each frame in the region.
 } RegionStatus;
 
 RegionStatus* regions;
@@ -57,47 +57,47 @@ void newframe_initialize(){
 
     regions = new RegionStatus[HORIZ_REGIONS*VERT_REGIONS];
 
-	TOTAL_REGION_THRESHOLD = (CHANGE_TYPE)(1)*THRESHOLD * REGION_SIDELENGTH_PIXELS * REGION_SIDELENGTH_PIXELS;
-	// For the special regions to the right of the screen that don't quite fit
-	TOTAL_REGION_THRESHOLD_RIGHT = (CHANGE_TYPE)(1)*THRESHOLD * HORIZ_REMAINDER * REGION_SIDELENGTH_PIXELS;
-	// ditto but for the bottom
-	TOTAL_REGION_THRESHOLD_BOTTOM = (CHANGE_TYPE)(1)*THRESHOLD * REGION_SIDELENGTH_PIXELS * VERT_REMAINDER;
-	// ditto but for bottom right
-	TOTAL_REGION_THRESHOLD_BOTTOM_RIGHT = (CHANGE_TYPE)(1)*THRESHOLD * HORIZ_REMAINDER * VERT_REMAINDER;
+    TOTAL_REGION_THRESHOLD = (CHANGE_TYPE)(1)*THRESHOLD * REGION_SIDELENGTH_PIXELS * REGION_SIDELENGTH_PIXELS;
+    // For the special regions to the right of the screen that don't quite fit
+    TOTAL_REGION_THRESHOLD_RIGHT = (CHANGE_TYPE)(1)*THRESHOLD * HORIZ_REMAINDER * REGION_SIDELENGTH_PIXELS;
+    // ditto but for the bottom
+    TOTAL_REGION_THRESHOLD_BOTTOM = (CHANGE_TYPE)(1)*THRESHOLD * REGION_SIDELENGTH_PIXELS * VERT_REMAINDER;
+    // ditto but for bottom right
+    TOTAL_REGION_THRESHOLD_BOTTOM_RIGHT = (CHANGE_TYPE)(1)*THRESHOLD * HORIZ_REMAINDER * VERT_REMAINDER;
 
 
 
     
 
     FRAME_SIZE = 4*ScreenX*ScreenY;
-	screens = new BYTE[NUM_FRAMES*FRAME_SIZE];
+    screens = new BYTE[NUM_FRAMES*FRAME_SIZE];
 
 
     hdcScreen = GetWindowDC(captureWindow);
-	hdcScreenCopy = CreateCompatibleDC(hdcScreen);
-	hdcBitmap = CreateCompatibleDC(hdcScreen);
-	hBitmap = CreateCompatibleBitmap(hdcScreen, ScreenX, ScreenY);
-	SelectObject(hdcBitmap, hBitmap);
+    hdcScreenCopy = CreateCompatibleDC(hdcScreen);
+    hdcBitmap = CreateCompatibleDC(hdcScreen);
+    hBitmap = CreateCompatibleBitmap(hdcScreen, ScreenX, ScreenY);
+    SelectObject(hdcBitmap, hBitmap);
 
 
-	//bitmap header indicating screencap bitmap format
-	bmi.biSize = sizeof(BITMAPINFOHEADER);
-	bmi.biPlanes = 1;
-	bmi.biBitCount = 32;
-	bmi.biWidth = ScreenX;
-	bmi.biHeight = -ScreenY;
-	bmi.biCompression = BI_RGB;
-	bmi.biSizeImage = 0;
+    //bitmap header indicating screencap bitmap format
+    bmi.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.biPlanes = 1;
+    bmi.biBitCount = 32;
+    bmi.biWidth = ScreenX;
+    bmi.biHeight = -ScreenY;
+    bmi.biCompression = BI_RGB;
+    bmi.biSizeImage = 0;
 
 }
 
 // https://stackoverflow.com/questions/16112482/c-getting-rgb-from-hbitmap
 static void ScreenCap(unsigned int i) {
-	if (i >= NUM_FRAMES)     // ensure never out of bounds
-		return;
+    if (i >= NUM_FRAMES)     // ensure never out of bounds
+        return;
 
-	BitBlt(hdcBitmap, 0, 0, ScreenX, ScreenY, hdcScreen, 0, 0, SRCCOPY);
-	GetDIBits(hdcScreenCopy, hBitmap, 0, ScreenY, &screens[i*FRAME_SIZE], (BITMAPINFO*)&bmi, DIB_RGB_COLORS);
+    BitBlt(hdcBitmap, 0, 0, ScreenX, ScreenY, hdcScreen, 0, 0, SRCCOPY);
+    GetDIBits(hdcScreenCopy, hBitmap, 0, ScreenY, &screens[i*FRAME_SIZE], (BITMAPINFO*)&bmi, DIB_RGB_COLORS);
 }
 
 void newframe_cleanup(){
@@ -108,25 +108,25 @@ void newframe_cleanup(){
         delete regions;
 
 
-	ReleaseDC(GetDesktopWindow(), hdcScreen);
-	DeleteDC(hdcScreenCopy);
-	DeleteDC(hdcBitmap);
-	DeleteObject(hBitmap);
+    ReleaseDC(GetDesktopWindow(), hdcScreen);
+    DeleteDC(hdcScreenCopy);
+    DeleteDC(hdcBitmap);
+    DeleteObject(hBitmap);
 }
 
 static inline int PosB(int i, int x, int y)
 {
-	return screens[i*FRAME_SIZE + 4 * ((y*ScreenX) + x)];
+    return screens[i*FRAME_SIZE + 4 * ((y*ScreenX) + x)];
 }
 
 static inline int PosG(int i, int x, int y)
 {
-	return screens[i*FRAME_SIZE + 4 * ((y*ScreenX) + x) + 1];
+    return screens[i*FRAME_SIZE + 4 * ((y*ScreenX) + x) + 1];
 }
 
 static inline int PosR(int i, int x, int y)
 {
-	return screens[i*FRAME_SIZE + 4 * ((y*ScreenX) + x) + 2];
+    return screens[i*FRAME_SIZE + 4 * ((y*ScreenX) + x) + 2];
 }
 
 
@@ -192,34 +192,34 @@ static inline void analyzeRegion(int prev_frame_i, int new_frame_i, CHANGE_TYPE 
 // https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nc-winuser-timerproc
 // https://stackoverflow.com/questions/15685095/how-to-use-settimer-api
 void newframe() {
-	int new_frame_i = screens_start;
+    int new_frame_i = screens_start;
 
-	//We have a (NUM_FRAMES) frames used for a circular buffer.
-	//If there are free space in a buffer, we are able to allocate the frame for the buffer
-	//Otherwise if the buffer is full, the oldest buffer will get replace with the new one.
-	ScreenCap(screens_start);
-	screens_start++;
-	if (screens_start >= NUM_FRAMES) {
-		screens_start = 0;
-	}
+    //We have a (NUM_FRAMES) frames used for a circular buffer.
+    //If there are free space in a buffer, we are able to allocate the frame for the buffer
+    //Otherwise if the buffer is full, the oldest buffer will get replace with the new one.
+    ScreenCap(screens_start);
+    screens_start++;
+    if (screens_start >= NUM_FRAMES) {
+        screens_start = 0;
+    }
 
-	int prev_frame_i = new_frame_i - 1;
-	if (prev_frame_i < 0)
-		prev_frame_i += NUM_FRAMES;
+    int prev_frame_i = new_frame_i - 1;
+    if (prev_frame_i < 0)
+        prev_frame_i += NUM_FRAMES;
 
-	//The following finds the aggregate distance of all region.
-	for (int horiz_r = 0; horiz_r < HORIZ_REGIONS - 1; horiz_r++) {
-		for (int vert_r = 0; vert_r < VERT_REGIONS - 1; vert_r++) {
+    //The following finds the aggregate distance of all region.
+    for (int horiz_r = 0; horiz_r < HORIZ_REGIONS - 1; horiz_r++) {
+        for (int vert_r = 0; vert_r < VERT_REGIONS - 1; vert_r++) {
             // general case
             analyzeRegion(prev_frame_i, new_frame_i, TOTAL_REGION_THRESHOLD,
                           horiz_r,                  vert_r,
                           REGION_SIDELENGTH_PIXELS, REGION_SIDELENGTH_PIXELS);
-		}
+        }
         // first special case: regions at bottom of screen
         analyzeRegion(prev_frame_i, new_frame_i, TOTAL_REGION_THRESHOLD_BOTTOM,
                       horiz_r,                  VERT_REGIONS - 1,
                       REGION_SIDELENGTH_PIXELS, VERT_REMAINDER);
-	}
+    }
 
     for (int vert_r = 0; vert_r < VERT_REGIONS - 1; vert_r++) {
         // second special case: regions at right of screen
