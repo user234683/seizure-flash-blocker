@@ -150,20 +150,7 @@ void InitializeWindow(HINSTANCE hInstance) {
 	//SetTimer(hWnd, DRAW_TIMER, 500, (TIMERPROC)NULL);
 
 }
-void GDI_Init() {
-	// Initialize GDI+. This allows us to draw alpha pixels
 
-	GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
-}
-
-// finds the smallest factor of x greater than y
-int smallestFactorGreaterThan(int x, int y) {
-	int factor = y;
-	while (x % factor != 0) {     // sorry I dont know number theory
-		factor++;
-	}
-	return factor;
-}
 
 BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM fuckcpp) {
 	if (!IsWindowVisible(hwnd))
@@ -269,9 +256,6 @@ void cleanup() {
 	DeleteDC(hdcScreenCopy);
 	DeleteDC(hdcBitmap);
 	DeleteObject(hBitmap);
-
-
-	GdiplusShutdown(gdiplusToken);
 }
 
 // https://stackoverflow.com/questions/16112482/c-getting-rgb-from-hbitmap
@@ -296,13 +280,6 @@ inline int PosG(int i, int x, int y)
 inline int PosR(int i, int x, int y)
 {
 	return screens[i*FRAME_SIZE + 4 * ((y*ScreenX) + x) + 2];
-}
-
-int euclidean_modulus(int a, int b) {
-	int m = a % b;
-	if (m < 0)
-		m = m + b;
-	return m;
 }
 
 inline RECT get_region_rect(int horiz_coord, int vert_coord) {
@@ -490,7 +467,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE prevInstance, LPSTR str, int
 	BOOL bRet;
 	//Perform init things
 	initialize();
-	GDI_Init();
+	GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
 	InitializeWindow(hInstance);
 
 	// capture the screen at 10 fps
@@ -506,5 +483,6 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE prevInstance, LPSTR str, int
 	}
 	//clean up the stuff
 	cleanup();
+    GdiplusShutdown(gdiplusToken);
 	return (int)msg.wParam;
 }
