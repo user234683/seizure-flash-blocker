@@ -49,11 +49,15 @@ We're excited about the future developments that could spring from this, such as
 ## Compiling
 
 ### MinGW
-Use the command `g++ -O2 src/*.cpp -lGdi32 -lGdiplus -o seizure-flash-blocker.exe`
+Use the command `g++ -static-libgcc -static-libstdc++ -O2 src/*.cpp -lGdi32 -lGdiplus -o seizure-flash-blocker.exe`
 
 Note: The -l flags must come [after](http://www.mingw.org/wiki/specify_the_libraries_for_the_linker_to_use) the `src/*.cpp`
 
-`-O2` tells it to apply optimizations. Use `-g` if you want to debug with gdb. If compiling with MinGW isn't working, open an issue.
+`-O2` tells it to apply optimizations. Use `-g` if you want to debug with gdb.
+
+The static flags tell it to include gcc's C/C++ runtime in the executable, [since it's not present on most computers](https://stackoverflow.com/questions/4702732/the-program-cant-start-because-libgcc-s-dw2-1-dll-is-missing). 
+
+If compiling with MinGW isn't working, open an issue.
 
 ### Visual Studio
 Ugh, will work it out
