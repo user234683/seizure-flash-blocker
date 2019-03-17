@@ -146,10 +146,11 @@ static inline void analyzeRegion(int prev_frame_i, int new_frame_i, CHANGE_TYPE 
     RegionStatus* region = &regions[horiz_r*VERT_REGIONS + vert_r];
     CHANGE_TYPE new_change = 0;
     //This will compute the aggregate change of the vectors of each pixel RGB within the frame
-    for (int x_i = 0; x_i < region_width; x_i++) {
-        int x = horiz_r * REGION_SIDELENGTH_PIXELS + x_i;
-        for (int y_i = 0; y_i < region_height; y_i++) {
-            int y = vert_r * REGION_SIDELENGTH_PIXELS + y_i;
+    for (int y_i = 0; y_i < region_height; y_i++) {
+        int y = vert_r * REGION_SIDELENGTH_PIXELS + y_i;
+        for (int x_i = 0; x_i < region_width; x_i++) {
+            int x = horiz_r * REGION_SIDELENGTH_PIXELS + x_i;
+
 
             int deltaB = PosB(new_frame_i, x, y) - PosB(prev_frame_i, x, y);
             int deltaG = PosG(new_frame_i, x, y) - PosG(prev_frame_i, x, y);
