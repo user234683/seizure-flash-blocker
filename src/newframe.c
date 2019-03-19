@@ -1,5 +1,6 @@
 // newframe.cpp: captures, stores, and analyzes the screen
 #include <windows.h>
+#include <stdbool.h>
 
 #include "constants.h"
 #include "newframe.h"

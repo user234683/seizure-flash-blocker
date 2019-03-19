@@ -72,10 +72,10 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE prevInstance, LPSTR str, int
 
     //Main Message loop that will iterate over and over until it receives a destroy message
     //in that case it is a ID of -1 and will close the app
-    while (::GetMessageW(&msg, NULL, 0, 0) > 0)
+    while (GetMessageW(&msg, NULL, 0, 0) > 0)
     {
-        ::TranslateMessage(&msg);
-        ::DispatchMessageW(&msg);
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
     }
 
     //Module cleanup

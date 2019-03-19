@@ -86,8 +86,11 @@ void cover_initialize(HINSTANCE hInstance){
     oldBitmap = (HBITMAP) SelectObject(coverDC, coverBitmap);
 
     // needed by UpdateLayeredWindow call
-    screenSize = {ScreenX, ScreenY};
-    screenOffset = {windowOffsetX, windowOffsetY};
+    screenSize.cx = ScreenX;
+    screenSize.cy = ScreenY;
+
+    screenOffset.x = windowOffsetX;
+    screenOffset.y = windowOffsetY;
 }
 
 void cover_cleanup(){
