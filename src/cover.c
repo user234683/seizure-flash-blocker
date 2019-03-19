@@ -17,7 +17,7 @@ POINT screenOffset;
 // Bitmap used as a mask to cover regions
 HBITMAP coverBitmap = NULL;
 // Array holding the bytes for the bitmap. Same format as screen captures
-BYTE * imageBits = NULL;
+BYTE* restrict imageBits = NULL;
 
 // Device context that holds the bitmap mask
 HDC coverDC;

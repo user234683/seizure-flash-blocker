@@ -16,7 +16,7 @@ const CHANGE_TYPE MAX_REGION_CHANGE = (CHANGE_TYPE)(1)*255*255*REGION_SIDELENGTH
 
 
 // screen capturing stuff
-BYTE* screens;
+BYTE* restrict screens;
 int FRAME_SIZE;
 int screens_start = 0;
 
@@ -45,7 +45,7 @@ typedef struct {
     CHANGE_TYPE changes[CHANGES_LENGTH];    // circular buffer of aggregate color distance changes between each frame in the region.
 } RegionStatus;
 
-RegionStatus* regions;
+RegionStatus* restrict regions;
 int changes_start;         // start index of the changes circular buffer in RegionStatus
 
 
@@ -142,7 +142,7 @@ static inline bool analyzeRegion(int prev_frame_i, int new_frame_i, CHANGE_TYPE 
 
 
     //In this region, whenever we add a new frame and remove a oldest frame
-    RegionStatus* region = &regions[horiz_r*VERT_REGIONS + vert_r];
+    RegionStatus* restrict region = &regions[horiz_r*VERT_REGIONS + vert_r];
     CHANGE_TYPE new_change = 0;
     //This will compute the aggregate change of the vectors of each pixel RGB within the frame
     for (int y_i = 0; y_i < region_height; y_i++) {
