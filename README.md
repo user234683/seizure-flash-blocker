@@ -37,25 +37,27 @@ We're excited about the future developments that could spring from this, such as
 ## Roadmap (in rough order)
 
 - [x] Make region partitioning work on any window size
-- [ ] Make it work system wide
-- [ ] Use a faster method for drawing over regions
-- [ ] Convert to C
+- [x] Use a faster method for drawing over regions
+- [x] Convert to C
+- [ ] Make it work on individual pixels
+- [ ] Average the pixels instead of simply covering them
 - [ ] Vectorize the algorithm, using `restrict` and possibly inline assembly or the GPU to improve the performance
 - [ ] Once 30 fps or more is achieved, use a theoretical model of flashing/sampling (already created) to calculate the constants for that framerate. Add framerate monitoring to keep these constants right if performance drops.
 - [ ] Clean up comments, improve code quality, and add error handling to move from hackathon quality to production quality
 - [ ] Read the literature on automatic software detection of seizure-inducing content and change the algorithm to give it a scientific basis
+- [ ] Make it work system wide ?
 - [ ] Add a system tray, settings, and the option to run at startup
 
 ## Compiling
 
 ### MinGW
-Use the command `g++ -static-libgcc -static-libstdc++ -O2 src/*.cpp -lGdi32 -lGdiplus -o seizure-flash-blocker.exe`
+Use the command `gcc -static-libgcc -O3 src/*.c -lGdi32 -o seizure-flash-blocker.exe`
 
-Note: The -l flags must come [after](http://www.mingw.org/wiki/specify_the_libraries_for_the_linker_to_use) the `src/*.cpp`
+Note: The -l flag must come [after](http://www.mingw.org/wiki/specify_the_libraries_for_the_linker_to_use) the `src/*.c`
 
-`-O2` tells it to apply optimizations. Use `-g` if you want to debug with gdb.
+`-O3` tells it to apply optimizations. Use `-g` instead if you want to debug with gdb.
 
-The static flags tell it to include gcc's C/C++ runtime in the executable, [since it's not present on most computers](https://stackoverflow.com/questions/4702732/the-program-cant-start-because-libgcc-s-dw2-1-dll-is-missing). 
+The static flags tell it to include gcc's C runtime in the executable, [since it's not present on most computers](https://stackoverflow.com/questions/4702732/the-program-cant-start-because-libgcc-s-dw2-1-dll-is-missing).
 
 If compiling with MinGW isn't working, open an issue.
 
