@@ -1,4 +1,5 @@
 extern HWND captureWindow;
+extern HDC hdcScreen;
 extern int ScreenX;
 extern int ScreenY;
 extern int windowOffsetX;
@@ -11,5 +12,7 @@ extern int VERT_REGIONS;
 extern int VERT_REMAINDER;
 
 RECT get_region_rect(int horiz_coord, int vert_coord);
+RECT get_offset_region_rect(int horiz_coord, int vert_coord);
+
 void screeninfo_initialize();
 void screeninfo_cleanup();

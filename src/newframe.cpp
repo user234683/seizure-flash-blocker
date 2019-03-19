@@ -20,7 +20,6 @@ int FRAME_SIZE;
 int screens_start = 0;
 
 
-HDC hdcScreen;
 HDC hdcScreenCopy;
 HDC hdcBitmap;
 HBITMAP hBitmap;
@@ -73,7 +72,6 @@ void newframe_initialize(){
     screens = new BYTE[NUM_FRAMES*FRAME_SIZE];
 
 
-    hdcScreen = GetWindowDC(captureWindow);
     hdcScreenCopy = CreateCompatibleDC(hdcScreen);
     hdcBitmap = CreateCompatibleDC(hdcScreen);
     hBitmap = CreateCompatibleBitmap(hdcScreen, ScreenX, ScreenY);
@@ -136,8 +134,8 @@ static inline int PosR(int i, int x, int y)
 
 
 
-
-static inline void analyzeRegion(int prev_frame_i, int new_frame_i, CHANGE_TYPE region_threshold,
+// returns whether the badness of the region has changed
+static inline bool analyzeRegion(int prev_frame_i, int new_frame_i, CHANGE_TYPE region_threshold,
                           int horiz_r, int vert_r,
                           int region_width, int region_height) {
 
@@ -176,6 +174,7 @@ static inline void analyzeRegion(int prev_frame_i, int new_frame_i, CHANGE_TYPE 
             //If so than this may/may not be a epilepsy and will cover it with a red color.
             region->bad = true;
             coverRegion(horiz_r, vert_r);
+            return true; // Bad was false, now true
         }
     }
     else {
@@ -184,8 +183,10 @@ static inline void analyzeRegion(int prev_frame_i, int new_frame_i, CHANGE_TYPE 
         if (region->bad && region->frames_last_set >= NUM_FRAMES) {
             region->bad = false;
             uncoverRegion(horiz_r, vert_r);
+            return true; // Bad was true, now false
         }
     }
+    return false; // No change in bad status
 }
 
 //BYTE screens[NUM_FRAMES][4 * ScreenX*ScreenY];
@@ -193,6 +194,9 @@ static inline void analyzeRegion(int prev_frame_i, int new_frame_i, CHANGE_TYPE 
 // https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nc-winuser-timerproc
 // https://stackoverflow.com/questions/15685095/how-to-use-settimer-api
 void newframe() {
+    // true if any of the regions have had their bad status changed, and thus we need to redraw the bitmap
+    bool needs_update = false;
+
     int new_frame_i = screens_start;
 
     //We have a (NUM_FRAMES) frames used for a circular buffer.
@@ -212,27 +216,31 @@ void newframe() {
     for (int horiz_r = 0; horiz_r < HORIZ_REGIONS - 1; horiz_r++) {
         for (int vert_r = 0; vert_r < VERT_REGIONS - 1; vert_r++) {
             // general case
-            analyzeRegion(prev_frame_i, new_frame_i, TOTAL_REGION_THRESHOLD,
-                          horiz_r,                  vert_r,
-                          REGION_SIDELENGTH_PIXELS, REGION_SIDELENGTH_PIXELS);
+            needs_update |= analyzeRegion(prev_frame_i, new_frame_i, TOTAL_REGION_THRESHOLD,
+                                          horiz_r,                  vert_r,
+                                          REGION_SIDELENGTH_PIXELS, REGION_SIDELENGTH_PIXELS);
         }
         // first special case: regions at bottom of screen
-        analyzeRegion(prev_frame_i, new_frame_i, TOTAL_REGION_THRESHOLD_BOTTOM,
-                      horiz_r,                  VERT_REGIONS - 1,
-                      REGION_SIDELENGTH_PIXELS, VERT_REMAINDER);
+        needs_update |= analyzeRegion(prev_frame_i, new_frame_i, TOTAL_REGION_THRESHOLD_BOTTOM,
+                                      horiz_r,                  VERT_REGIONS - 1,
+                                      REGION_SIDELENGTH_PIXELS, VERT_REMAINDER);
     }
 
     for (int vert_r = 0; vert_r < VERT_REGIONS - 1; vert_r++) {
         // second special case: regions at right of screen
-        analyzeRegion(prev_frame_i, new_frame_i, TOTAL_REGION_THRESHOLD_RIGHT,
-                      HORIZ_REGIONS - 1,    vert_r, 
-                      HORIZ_REMAINDER,      REGION_SIDELENGTH_PIXELS);
+        needs_update |= analyzeRegion(prev_frame_i, new_frame_i, TOTAL_REGION_THRESHOLD_RIGHT,
+                                      HORIZ_REGIONS - 1,    vert_r,
+                                      HORIZ_REMAINDER,      REGION_SIDELENGTH_PIXELS);
     }
 
     // third special case: region at bottom right of screen
-    analyzeRegion(prev_frame_i, new_frame_i, TOTAL_REGION_THRESHOLD_BOTTOM_RIGHT,
-                  HORIZ_REGIONS - 1,    VERT_REGIONS - 1, 
-                  HORIZ_REMAINDER,      VERT_REMAINDER);
+    needs_update |= analyzeRegion(prev_frame_i, new_frame_i, TOTAL_REGION_THRESHOLD_BOTTOM_RIGHT,
+                                  HORIZ_REGIONS - 1,    VERT_REGIONS - 1,
+                                  HORIZ_REMAINDER,      VERT_REMAINDER);
+
+
+    if(needs_update)
+        update_window();
 
     // advance changes circular buffer
     changes_start++;

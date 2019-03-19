@@ -7,6 +7,8 @@
 
 
 HWND captureWindow;
+HDC hdcScreen;
+
 int ScreenX = 0;
 int ScreenY = 0;
 int windowOffsetX;
@@ -65,6 +67,8 @@ void screeninfo_initialize() {
     //Some of the chrome processors may be service or even nonsense. We will take the process ID
     //and window handle that contains the visible window of Chrome
     captureWindow = findChrome();
+    hdcScreen = GetWindowDC(captureWindow);
+
     RECT windowRect;
     GetWindowRect(captureWindow, &windowRect);
     ScreenX = windowRect.right - windowRect.left;
@@ -85,11 +89,11 @@ void screeninfo_initialize() {
 }
 
 void screeninfo_cleanup(){
-
+    ReleaseDC(NULL, hdcScreen);
 }
 
 
-RECT get_region_rect(int horiz_coord, int vert_coord) {
+RECT get_offset_region_rect(int horiz_coord, int vert_coord) {
     RECT rect;
     rect.top = vert_coord * REGION_SIDELENGTH_PIXELS + windowOffsetY;
     rect.left = horiz_coord * REGION_SIDELENGTH_PIXELS + windowOffsetX;
@@ -99,7 +103,12 @@ RECT get_region_rect(int horiz_coord, int vert_coord) {
 }
 
 
-
-
-
+RECT get_region_rect(int horiz_coord, int vert_coord) {
+    RECT rect;
+    rect.top = vert_coord * REGION_SIDELENGTH_PIXELS;
+    rect.left = horiz_coord * REGION_SIDELENGTH_PIXELS;
+    rect.bottom = rect.top + (vert_coord == VERT_REGIONS - 1 ? VERT_REMAINDER : REGION_SIDELENGTH_PIXELS);
+    rect.right = rect.left + (horiz_coord == HORIZ_REGIONS - 1 ? HORIZ_REMAINDER : REGION_SIDELENGTH_PIXELS);
+    return rect;
+}
 
