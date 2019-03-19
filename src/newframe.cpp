@@ -54,7 +54,7 @@ int changes_start;         // start index of the changes circular buffer in Regi
 
 void newframe_initialize(){
 
-    regions = new RegionStatus[HORIZ_REGIONS*VERT_REGIONS];
+    regions = (RegionStatus*) malloc(HORIZ_REGIONS*VERT_REGIONS*sizeof(RegionStatus));
 
     TOTAL_REGION_THRESHOLD = (CHANGE_TYPE)(1)*THRESHOLD * REGION_SIDELENGTH_PIXELS * REGION_SIDELENGTH_PIXELS;
     // For the special regions to the right of the screen that don't quite fit
@@ -69,7 +69,7 @@ void newframe_initialize(){
     
 
     FRAME_SIZE = 4*ScreenX*ScreenY;
-    screens = new BYTE[NUM_FRAMES*FRAME_SIZE];
+    screens = (BYTE*) malloc(NUM_FRAMES*FRAME_SIZE);
 
 
     hdcScreenCopy = CreateCompatibleDC(hdcScreen);
@@ -100,10 +100,10 @@ static void ScreenCap(unsigned int i) {
 
 void newframe_cleanup(){
     if(screens)
-        delete screens;
+        free(screens);
 
     if(regions)
-        delete regions;
+        free(regions);
 
 
     ReleaseDC(GetDesktopWindow(), hdcScreen);

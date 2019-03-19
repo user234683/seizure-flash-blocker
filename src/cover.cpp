@@ -2,8 +2,6 @@
 #include <windows.h>
 #include <SDKDDKVer.h>
 #include <objidl.h>
-#include <vector>
-#include <string>
 
 #include "constants.h"
 #include "cover.h"
