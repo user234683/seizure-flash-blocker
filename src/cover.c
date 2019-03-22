@@ -45,8 +45,10 @@ static void InitializeWindow(HINSTANCE hInstance) {
 
     //Create a window top most to the top left and remove the window in the toolbar upon creation.
     hWnd = CreateWindowEx(
-        WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TOOLWINDOW, //Keep window on top from all other windows and hide the windows from toolbar
-                                                    //Our window should not have any borders at all
+        (WS_EX_TOPMOST |        // Keep window on top of all other windows
+        WS_EX_LAYERED |         // Allows window to transparent
+        WS_EX_TOOLWINDOW |      // Disable taskbar icon
+        WS_EX_TRANSPARENT),     // Allow keyboard and mouse events to pass through the window
         window_className,       // Class Name
         "coverwindow",          // Window name
         WS_POPUP | WS_VISIBLE,          // Visible pop up
