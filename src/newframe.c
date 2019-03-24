@@ -147,7 +147,7 @@ static inline bool analyzeRegion(int prev_frame_i, int new_frame_i, CHANGE_TYPE 
 
 
     //In this region, whenever we add a new frame and remove a oldest frame
-    RegionStatus* restrict region = &regions[horiz_r*VERT_REGIONS + vert_r];
+    RegionStatus* restrict region = &regions[vert_r*HORIZ_REGIONS + horiz_r];
     CHANGE_TYPE new_change = 0;
     //This will compute the aggregate change of the vectors of each pixel RGB within the frame
     for (int y_i = 0; y_i < region_height; y_i++) {
@@ -201,24 +201,25 @@ static inline bool analyzeRegion(int prev_frame_i, int new_frame_i, CHANGE_TYPE 
 static bool analyzeByRegion(int prev_frame_i, int new_frame_i) {
     bool needs_update = false;
     //The following finds the aggregate distance of all region.
-    for (int horiz_r = 0; horiz_r < HORIZ_REGIONS - 1; horiz_r++) {
-        for (int vert_r = 0; vert_r < VERT_REGIONS - 1; vert_r++) {
+    for (int vert_r = 0; vert_r < VERT_REGIONS - 1; vert_r++) {
+        for (int horiz_r = 0; horiz_r < HORIZ_REGIONS - 1; horiz_r++) {
+
             // general case
             needs_update |= analyzeRegion(prev_frame_i, new_frame_i, TOTAL_REGION_THRESHOLD,
                                           horiz_r,                  vert_r,
                                           REGION_SIDELENGTH_PIXELS, REGION_SIDELENGTH_PIXELS);
         }
-        // first special case: regions at bottom of screen
-        needs_update |= analyzeRegion(prev_frame_i, new_frame_i, TOTAL_REGION_THRESHOLD_BOTTOM,
-                                      horiz_r,                  VERT_REGIONS - 1,
-                                      REGION_SIDELENGTH_PIXELS, VERT_REMAINDER);
-    }
-
-    for (int vert_r = 0; vert_r < VERT_REGIONS - 1; vert_r++) {
-        // second special case: regions at right of screen
+        // first special case: regions at right of screen
         needs_update |= analyzeRegion(prev_frame_i, new_frame_i, TOTAL_REGION_THRESHOLD_RIGHT,
                                       HORIZ_REGIONS - 1,    vert_r,
                                       HORIZ_REMAINDER,      REGION_SIDELENGTH_PIXELS);
+    }
+
+    for (int horiz_r = 0; horiz_r < HORIZ_REGIONS - 1; horiz_r++) {
+        // second special case: regions at bottom of screen
+        needs_update |= analyzeRegion(prev_frame_i, new_frame_i, TOTAL_REGION_THRESHOLD_BOTTOM,
+                                      horiz_r,                  VERT_REGIONS - 1,
+                                      REGION_SIDELENGTH_PIXELS, VERT_REMAINDER);
     }
 
     // third special case: region at bottom right of screen
