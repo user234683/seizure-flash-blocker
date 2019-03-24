@@ -20,6 +20,8 @@ BYTE* restrict screens;
 int FRAME_SIZE;
 int screens_start = 0;
 
+// running average of screen pixels
+BYTE* restrict screen_average;
 
 HDC hdcScreenCopy;
 HDC hdcBitmap;
@@ -77,6 +79,10 @@ void newframe_initialize(){
     FRAME_SIZE = 4*ScreenX*ScreenY;
     screens = (BYTE*) malloc(NUM_FRAMES*FRAME_SIZE);
 
+#if RESPONSE == 1
+    screen_average = (BYTE*) malloc(FRAME_SIZE);
+    memset(screen_average, 255, FRAME_SIZE);    // set everything to 255 so the alpha channel has that value
+#endif
 
     hdcScreenCopy = CreateCompatibleDC(hdcScreen);
     hdcBitmap = CreateCompatibleDC(hdcScreen);
@@ -107,6 +113,11 @@ static void ScreenCap(unsigned int i) {
 void newframe_cleanup(){
     if(screens)
         free(screens);
+
+#if RESPONSE == 1
+    if(screen_average)
+        free(screen_average);
+#endif
 
     if(regions)
         free(regions);
@@ -181,7 +192,18 @@ static inline bool analyzeRegion(int prev_frame_i, int new_frame_i, CHANGE_TYPE 
         region->frames_last_set = 0;
         if (!region->bad) {
             region->bad = true;
-            coverRegion(horiz_r, vert_r);
+
+
+            int y_initial = vert_r*REGION_SIDELENGTH_PIXELS;
+            for(int y = y_initial; y < (y_initial + region_height); y++){
+                int x = horiz_r*REGION_SIDELENGTH_PIXELS;
+#if RESPONSE == 1
+                memcpy(&imageBits[4*(y*ScreenX + x)], &screen_average[4*(y*ScreenX + x)], 4*region_width);
+#else
+                memset(&imageBits[4*(y*ScreenX + x)], 255, 4*region_width);
+#endif
+            }
+
             return true; // Bad was false, now true
         }
     }
@@ -190,7 +212,12 @@ static inline bool analyzeRegion(int prev_frame_i, int new_frame_i, CHANGE_TYPE 
         region->frames_last_set++;
         if (region->bad && region->frames_last_set >= NUM_FRAMES) {
             region->bad = false;
-            uncoverRegion(horiz_r, vert_r);
+
+            int y_initial = vert_r*REGION_SIDELENGTH_PIXELS;
+            for(int y = y_initial; y < (y_initial + region_height); y++){
+                memset(&imageBits[4*(y*ScreenX + horiz_r*REGION_SIDELENGTH_PIXELS)], 0, 4*region_width);
+            }
+
             return true; // Bad was true, now false
         }
     }
@@ -261,7 +288,11 @@ static bool analyzeByPixels(int prev_frame_i, int new_frame_i){
                 region->frames_last_set = 0;
                 if (!region->bad) {
                     region->bad = true;
+#if RESPONSE == 1
+                    memcpy(&imageBits[4*(y*ScreenX + x)], &screen_average[4*(y*ScreenX + x)], 4);
+#else
                     memset(&imageBits[4*(y*ScreenX + x)], 255, 4);
+#endif
                     needs_update = true; // Bad was false, now true
                 }
             }
@@ -290,16 +321,34 @@ void newframe() {
     // true if any of the regions have had their bad status changed, and thus we need to redraw the bitmap
     bool needs_update = false;
 
-    int new_frame_i = screens_start;
+#if RESPONSE == 1
+    // remove oldest frame from average
+    for(int y = 0; y < ScreenY; y++){
+        for(int x = 0; x < ScreenX; x++){
+            screen_average[4*(y*ScreenX + x)]   -= PosB(screens_start, x, y)/NUM_FRAMES;
+            screen_average[4*(y*ScreenX + x)+1] -= PosG(screens_start, x, y)/NUM_FRAMES;
+            screen_average[4*(y*ScreenX + x)+2] -= PosR(screens_start, x, y)/NUM_FRAMES;
+        }
+    }
+#endif
 
-    //We have a (NUM_FRAMES) frames used for a circular buffer.
-    //If there are free space in a buffer, we are able to allocate the frame for the buffer
-    //Otherwise if the buffer is full, the oldest buffer will get replace with the new one.
+    int new_frame_i = screens_start;
     ScreenCap(screens_start);
     screens_start++;
     if (screens_start >= NUM_FRAMES) {
         screens_start = 0;
     }
+
+#if RESPONSE == 1
+    // add newest frame to average
+    for(int y = 0; y < ScreenY; y++){
+        for(int x = 0; x < ScreenX; x++){
+            screen_average[4*(y*ScreenX + x)]   += PosB(screens_start, x, y)/NUM_FRAMES;
+            screen_average[4*(y*ScreenX + x)+1] += PosG(screens_start, x, y)/NUM_FRAMES;
+            screen_average[4*(y*ScreenX + x)+2] += PosR(screens_start, x, y)/NUM_FRAMES;
+        }
+    }
+#endif
 
     int prev_frame_i = new_frame_i - 1;
     if (prev_frame_i < 0)
