@@ -38,15 +38,20 @@ CHANGE_TYPE TOTAL_REGION_THRESHOLD_RIGHT;
 CHANGE_TYPE TOTAL_REGION_THRESHOLD_BOTTOM_RIGHT;
 
 
-#define CHANGES_LENGTH NUM_FRAMES -1
+#define CHANGES_LENGTH (NUM_FRAMES - 1)
+
+// https://stackoverflow.com/questions/4079243/how-can-i-use-sizeof-in-a-preprocessor-macro
+#define BITARRAY_TYPE long
+_Static_assert(CHANGES_LENGTH < sizeof(BITARRAY_TYPE)*8, "NUM_FRAMES is too long");
+
 typedef struct {
     bool bad;
-    int frames_last_set;            // How many frames ago this was set as bad
-    CHANGE_TYPE changes[CHANGES_LENGTH];    // circular buffer of aggregate color distance changes between each frame in the region.
+    int frames_last_set;                // How many frames ago this was set as bad
+    char number_of_violations;           // running total of threshold_violations
+    BITARRAY_TYPE threshold_violations; // a bit array. The Nth bit is 1 if the inter-frame change N frames ago was too much
 } RegionStatus;
 
 RegionStatus* restrict regions;
-int changes_start;         // start index of the changes circular buffer in RegionStatus
 
 
 
@@ -55,7 +60,7 @@ int changes_start;         // start index of the changes circular buffer in Regi
 
 void newframe_initialize(){
 
-    regions = (RegionStatus*) malloc(HORIZ_REGIONS*VERT_REGIONS*sizeof(RegionStatus));
+    regions = (RegionStatus*) calloc(HORIZ_REGIONS*VERT_REGIONS, sizeof(RegionStatus));
 
     TOTAL_REGION_THRESHOLD = (CHANGE_TYPE)(1)*THRESHOLD * REGION_SIDELENGTH_PIXELS * REGION_SIDELENGTH_PIXELS;
     // For the special regions to the right of the screen that don't quite fit
@@ -161,18 +166,20 @@ static inline bool analyzeRegion(int prev_frame_i, int new_frame_i, CHANGE_TYPE 
         }
     }
 
-    region->changes[changes_start] = new_change;
 
-    int number_of_thresholds = 0;
-    for(int i = 0; i < CHANGES_LENGTH; i++){
-        number_of_thresholds += (region->changes[i] > region_threshold);
-
+    region->threshold_violations <<= 1;
+    if(new_change > region_threshold){
+        region->threshold_violations |= 1;
+        region->number_of_violations++;
     }
-    // check if the changes is extreme. The aggregate change is very high
-    if (number_of_thresholds >= NUM_FRAMES - 3) {
+    if(region->threshold_violations & (1 << CHANGES_LENGTH )){
+        region->number_of_violations--;
+    }
+    region->threshold_violations ^= (1 << CHANGES_LENGTH );
+
+    if (region->number_of_violations >= NUM_FRAMES - 3) {
         region->frames_last_set = 0;
         if (!region->bad) {
-            //If so than this may/may not be a epilepsy and will cover it with a red color.
             region->bad = true;
             coverRegion(horiz_r, vert_r);
             return true; // Bad was false, now true
@@ -190,29 +197,9 @@ static inline bool analyzeRegion(int prev_frame_i, int new_frame_i, CHANGE_TYPE 
     return false; // No change in bad status
 }
 
-//BYTE screens[NUM_FRAMES][4 * ScreenX*ScreenY];
-//unsigned int screens_start = 0;
-// https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nc-winuser-timerproc
-// https://stackoverflow.com/questions/15685095/how-to-use-settimer-api
-void newframe() {
-    // true if any of the regions have had their bad status changed, and thus we need to redraw the bitmap
+
+static bool analyzeByRegion(int prev_frame_i, int new_frame_i) {
     bool needs_update = false;
-
-    int new_frame_i = screens_start;
-
-    //We have a (NUM_FRAMES) frames used for a circular buffer.
-    //If there are free space in a buffer, we are able to allocate the frame for the buffer
-    //Otherwise if the buffer is full, the oldest buffer will get replace with the new one.
-    ScreenCap(screens_start);
-    screens_start++;
-    if (screens_start >= NUM_FRAMES) {
-        screens_start = 0;
-    }
-
-    int prev_frame_i = new_frame_i - 1;
-    if (prev_frame_i < 0)
-        prev_frame_i += NUM_FRAMES;
-
     //The following finds the aggregate distance of all region.
     for (int horiz_r = 0; horiz_r < HORIZ_REGIONS - 1; horiz_r++) {
         for (int vert_r = 0; vert_r < VERT_REGIONS - 1; vert_r++) {
@@ -239,15 +226,92 @@ void newframe() {
                                   HORIZ_REGIONS - 1,    VERT_REGIONS - 1,
                                   HORIZ_REMAINDER,      VERT_REMAINDER);
 
+    return needs_update;
+}
+
+
+
+static bool analyzeByPixels(int prev_frame_i, int new_frame_i){
+    bool needs_update = false;
+    for(int y = 0; y < ScreenY; y++){
+        for(int x = 0; x < ScreenX; x++){
+            // special case where a "region" is just a single pixel
+            RegionStatus* restrict region = &regions[y*ScreenX + x];
+            int new_change = 0;
+            int deltaB = PosB(new_frame_i, x, y) - PosB(prev_frame_i, x, y);
+            int deltaG = PosG(new_frame_i, x, y) - PosG(prev_frame_i, x, y);
+            int deltaR = PosR(new_frame_i, x, y) - PosR(prev_frame_i, x, y);
+
+            new_change += deltaB * deltaB;
+            new_change += deltaG * deltaG;
+            new_change += deltaR * deltaR;
+
+            region->threshold_violations <<= 1;
+            if(new_change > THRESHOLD){
+                region->threshold_violations |= 1;
+                region->number_of_violations++;
+            }
+            if(region->threshold_violations & (1 << CHANGES_LENGTH )){
+                region->number_of_violations--;
+            }
+            region->threshold_violations ^= (1 << CHANGES_LENGTH );
+
+            if (region->number_of_violations >= NUM_FRAMES - 3) {
+                region->frames_last_set = 0;
+                if (!region->bad) {
+                    region->bad = true;
+                    memset(&imageBits[4*(y*ScreenX + x)], 255, 4);
+                    needs_update = true; // Bad was false, now true
+                }
+            }
+            else {
+                // If not remove the cover and consider the region safe
+                region->frames_last_set++;
+                if (region->bad && region->frames_last_set >= NUM_FRAMES) {
+                    region->bad = false;
+                    memset(&imageBits[4*(y*ScreenX + x)], 0, 4);
+                    needs_update = true; // Bad was true, now false
+                }
+            }
+        }
+    }
+    return needs_update;
+}
+
+
+
+
+//BYTE screens[NUM_FRAMES][4 * ScreenX*ScreenY];
+//unsigned int screens_start = 0;
+// https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nc-winuser-timerproc
+// https://stackoverflow.com/questions/15685095/how-to-use-settimer-api
+void newframe() {
+    // true if any of the regions have had their bad status changed, and thus we need to redraw the bitmap
+    bool needs_update = false;
+
+    int new_frame_i = screens_start;
+
+    //We have a (NUM_FRAMES) frames used for a circular buffer.
+    //If there are free space in a buffer, we are able to allocate the frame for the buffer
+    //Otherwise if the buffer is full, the oldest buffer will get replace with the new one.
+    ScreenCap(screens_start);
+    screens_start++;
+    if (screens_start >= NUM_FRAMES) {
+        screens_start = 0;
+    }
+
+    int prev_frame_i = new_frame_i - 1;
+    if (prev_frame_i < 0)
+        prev_frame_i += NUM_FRAMES;
+
+#if REGION_SIDELENGTH_PIXELS == 1
+    needs_update = analyzeByPixels(prev_frame_i, new_frame_i);
+#else
+    needs_update = analyzeByRegion(prev_frame_i, new_frame_i);
+#endif
 
     if(needs_update)
         update_window();
-
-    // advance changes circular buffer
-    changes_start++;
-    if (changes_start >= CHANGES_LENGTH)
-        changes_start = 0;
-
 }
 
 
