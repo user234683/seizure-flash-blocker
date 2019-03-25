@@ -6,7 +6,7 @@
 #include "newframe.h"
 #include "screeninfo.h"
 #include "cover.h"
-
+#include "profiling.h"
 
 
 // Just a compiler test variable to make sure it can't overflow, these numbers get big
