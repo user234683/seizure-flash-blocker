@@ -17,22 +17,23 @@ screeninfo.cpp:
 
 Module hierarchy:
 
------------------------------------
-|               main              |
------------------------------------
- |            | init,          | init
- |            | screencap      |
- |            V                V
- |       ------------      ---------
- |       | newframe |      | cover |
- |       ------------      ---------
- |            |                |
- | init       | screen dims,   | screen dimensions,
- |            | region divs    | region divisions
- V            V                V
------------------------------------
-|           screeninfo            |
------------------------------------
+--------------------------------------------
+|               main                       |
+--------------------------------------------
+ |            | init,               | init
+ |            | screencap           |
+ |            |                     |
+ |            V                     V
+ |       ------------ imageBits ---------
+ |       | newframe |---------->| cover |
+ |       ------------           ---------
+ |            |                     |
+ | init       | screen dims,        | screen dimensions,
+ |            | region divs         | region divisions
+ V            V                     V
+--------------------------------------------
+|           screeninfo                     |
+--------------------------------------------
 
 
 Additionally, every module gets the #define'd constants from constants.h
