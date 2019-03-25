@@ -26,10 +26,8 @@ HBITMAP oldBitmap;
 
 //Class name for registering windows class. Name is arbitrary.
 const char* window_className = "OverlayWindowClass";
-//Handle Device Context
-HDC hDC;
-//Handlw Window
-HWND hWnd;
+
+HWND coverWindow;
 
 static void RegisterWindowClass(HINSTANCE hInstance) {
     WNDCLASS wc = { 0 };
@@ -44,7 +42,7 @@ static void InitializeWindow(HINSTANCE hInstance) {
     RegisterWindowClass(hInstance);
 
     //Create a window top most to the top left and remove the window in the toolbar upon creation.
-    hWnd = CreateWindowEx(
+    coverWindow = CreateWindowEx(
         (WS_EX_TOPMOST |        // Keep window on top of all other windows
         WS_EX_LAYERED |         // Allows window to transparent
         WS_EX_TOOLWINDOW |      // Disable taskbar icon
@@ -130,7 +128,7 @@ void update_window(){
 
     POINT ptZero = { 0 };
     // paint the window (in the right location) with the alpha-blended bitmap
-    UpdateLayeredWindow(hWnd, hdcScreen, &screenOffset, &screenSize,
+    UpdateLayeredWindow(coverWindow, hdcScreen, &screenOffset, &screenSize,
         coverDC, &ptZero, RGB(0, 0, 0), &blend, ULW_ALPHA);
 }
 
