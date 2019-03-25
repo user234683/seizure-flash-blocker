@@ -1,15 +1,15 @@
 /*
-main.cpp:
+main.c:
  - entry point
  - sets up event loop
  - sets up timer that will call screencap at FRAME_RATE defined in constants.h
  - calls the initialization and cleanup functions for each module
 
-newframe.cpp: captures, stores, and analyzes the screen, tells cover.cpp when to cover/uncover regions
+newframe.c: captures, stores, and analyzes the screen, covers regions and tells cover.c to refresh the cover window
 
-cover.cpp: Manages the covering window and how to cover regions
+cover.c: Manages the covering window
 
-screeninfo.cpp:
+screeninfo.c:
  - At startup, gets info about the "screen" (capture window at the moment)
  - At startup, divides the screen into regions
  - Makes this information available to other modules

@@ -1,4 +1,4 @@
-// newframe.cpp: captures, stores, and analyzes the screen
+// newframe.c: captures, stores, analyzes the screen, and covers regions
 #include <windows.h>
 #include <stdbool.h>
 

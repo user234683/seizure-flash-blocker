@@ -1,4 +1,4 @@
-// screeninfo.cpp: gets info about the screen and capture window, divides the screen into regions
+// screeninfo.c: gets info about the screen and capture window, divides the screen into regions
 #include <windows.h>
 #include <tlhelp32.h>
 

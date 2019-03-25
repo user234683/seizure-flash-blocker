@@ -1,4 +1,4 @@
-// cover.cpp: Manages the covering window and how to cover regions
+// cover.c: Manages the covering window
 #include <windows.h>
 #include <SDKDDKVer.h>
 #include <objidl.h>
