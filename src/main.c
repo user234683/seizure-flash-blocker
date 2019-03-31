@@ -51,8 +51,8 @@ Additionally, every module gets the #define'd constants from constants.h
 #define CAPTURE_TIMER_ID 12345 // arbitrary number
 
 
-//Every X seconds, we will call a new frame which depends on the FPS we have set.
-void timerCallback(HWND hwnd, UINT uMsg, UINT timerId, DWORD dwTime) {
+
+void CALLBACK timerCallback(UINT wTimerID, UINT msg, DWORD dwUser, DWORD dw1, DWORD dw2) {
     newframe();
 }
 
@@ -67,8 +67,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE prevInstance, LPSTR str, int
     newframe_initialize();
 
 
-    // capture the screen at FRAME_RATE fps
-    SetTimer(NULL, CAPTURE_TIMER_ID, (int)(1.0f / FRAME_RATE * 1000), (TIMERPROC)&timerCallback);
+    timeSetEvent(1000/FRAME_RATE, 1, &timerCallback, 0,  TIME_PERIODIC | TIME_CALLBACK_FUNCTION);
 
 
     //Main Message loop that will iterate over and over until it receives a destroy message
